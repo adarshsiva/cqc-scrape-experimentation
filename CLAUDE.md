@@ -87,3 +87,21 @@ export GCS_BUCKET=<your-bucket-name>
 3. **Monitoring**: Set up Cloud Monitoring dashboards for all services
 4. **Testing**: Implement unit tests for all data transformations
 5. **Documentation**: Keep this file updated with new patterns and decisions
+6. **Version Control**: After making significant codebase changes, always commit and push to git:
+   - Use descriptive commit messages that explain what was changed and why
+   - Include the 🤖 emoji and co-author attribution in commits
+   - Push changes to the remote repository to ensure work is backed up
+   - Example workflow:
+     ```bash
+     git add -A
+     git commit -m "feat: Add new ML model training pipeline
+     
+     - Implemented XGBoost and LightGBM models
+     - Added feature engineering module
+     - Updated prediction service endpoint
+     
+     🤖 Generated with Claude Code
+     
+     Co-Authored-By: Claude <noreply@anthropic.com>"
+     git push
+     ```
