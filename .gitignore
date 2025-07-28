@@ -92,3 +92,6 @@ checkpoints/
 *.pkl
 *.h5
 *.pb
+
+# Project-specific files
+nextsteps.md
