@@ -1,0 +1,51 @@
+steps:
+  # Create BigQuery dataset if it doesn't exist
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        bq mk --dataset --location=europe-west2 --project_id=$PROJECT_ID cqc_data || echo "Dataset already exists"
+
+  # Build and deploy Dataflow template for ETL pipeline
+  - name: 'gcr.io/$PROJECT_ID/dataflow-python3:latest'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        cd src/etl
+        
+        # Install dependencies
+        pip install apache-beam[gcp]==2.53.0
+        pip install google-cloud-bigquery
+        pip install pandas numpy
+        
+        # Run Dataflow job for locations
+        python dataflow_pipeline.py \
+          --runner=DataflowRunner \
+          --project=$PROJECT_ID \
+          --region=europe-west2 \
+          --temp_location=gs://$PROJECT_ID-cqc-dataflow-temp/tmp \
+          --staging_location=gs://$PROJECT_ID-cqc-dataflow-temp/staging \
+          --job_name=cqc-etl-locations-$BUILD_ID \
+          --data_type=locations \
+          --input_pattern='gs://$PROJECT_ID-cqc-raw-data/raw/locations/*.json' \
+          --output_dataset=cqc_data \
+          --output_table=locations \
+          --no_use_public_ips \
+          --subnetwork=regions/europe-west2/subnetworks/default \
+          --service_account_email=cqc-df-service-account@$PROJECT_ID.iam.gserviceaccount.com \
+          --save_main_session \
+          --max_num_workers=10
+
+substitutions:
+  _DATAFLOW_IMAGE: 'gcr.io/${PROJECT_ID}/dataflow-python3:latest'
+
+# Build custom Dataflow image if it doesn't exist
+images:
+  - 'gcr.io/$PROJECT_ID/dataflow-python3:latest'
+
+timeout: 3600s
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'

@@ -1,0 +1,692 @@
+{
+  "locations": {
+    "table_id": "locations",
+    "description": "CQC locations data including ratings and service details",
+    "schema": [
+      {
+        "name": "location_id",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Unique CQC location identifier"
+      },
+      {
+        "name": "provider_id",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Associated provider ID"
+      },
+      {
+        "name": "location_name",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Name of the location"
+      },
+      {
+        "name": "type",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Type of location (e.g., Care home, Hospital)"
+      },
+      {
+        "name": "regulated_activities",
+        "type": "STRING",
+        "mode": "REPEATED",
+        "description": "List of regulated activities"
+      },
+      {
+        "name": "service_types",
+        "type": "STRING",
+        "mode": "REPEATED",
+        "description": "Types of services provided"
+      },
+      {
+        "name": "specialisms",
+        "type": "STRING",
+        "mode": "REPEATED",
+        "description": "Specialist services offered"
+      },
+      {
+        "name": "address_line_1",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "First line of address"
+      },
+      {
+        "name": "address_line_2",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Second line of address"
+      },
+      {
+        "name": "city",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "City or town"
+      },
+      {
+        "name": "county",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "County"
+      },
+      {
+        "name": "postcode",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Postcode"
+      },
+      {
+        "name": "region",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Region in England"
+      },
+      {
+        "name": "latitude",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Location latitude"
+      },
+      {
+        "name": "longitude",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Location longitude"
+      },
+      {
+        "name": "overall_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Overall CQC rating"
+      },
+      {
+        "name": "overall_rating_date",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Date of overall rating"
+      },
+      {
+        "name": "safe_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Safe domain rating"
+      },
+      {
+        "name": "safe_rating_date",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Date of safe rating"
+      },
+      {
+        "name": "effective_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Effective domain rating"
+      },
+      {
+        "name": "effective_rating_date",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Date of effective rating"
+      },
+      {
+        "name": "caring_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Caring domain rating"
+      },
+      {
+        "name": "caring_rating_date",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Date of caring rating"
+      },
+      {
+        "name": "responsive_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Responsive domain rating"
+      },
+      {
+        "name": "responsive_rating_date",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Date of responsive rating"
+      },
+      {
+        "name": "well_led_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Well-led domain rating"
+      },
+      {
+        "name": "well_led_rating_date",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Date of well-led rating"
+      },
+      {
+        "name": "last_inspection_date",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Date of last inspection"
+      },
+      {
+        "name": "registration_date",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Date of registration with CQC"
+      },
+      {
+        "name": "registration_status",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Current registration status"
+      },
+      {
+        "name": "dormant",
+        "type": "BOOLEAN",
+        "mode": "NULLABLE",
+        "description": "Whether location is dormant"
+      },
+      {
+        "name": "number_of_beds",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Number of beds (if applicable)"
+      },
+      {
+        "name": "website",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Location website URL"
+      },
+      {
+        "name": "phone_number",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Contact phone number"
+      },
+      {
+        "name": "ingestion_timestamp",
+        "type": "TIMESTAMP",
+        "mode": "REQUIRED",
+        "description": "Timestamp when data was ingested"
+      },
+      {
+        "name": "last_updated",
+        "type": "TIMESTAMP",
+        "mode": "NULLABLE",
+        "description": "Last update timestamp from CQC"
+      }
+    ]
+  },
+  "providers": {
+    "table_id": "providers",
+    "description": "CQC provider organizations data",
+    "schema": [
+      {
+        "name": "provider_id",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Unique CQC provider identifier"
+      },
+      {
+        "name": "provider_name",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Name of the provider organization"
+      },
+      {
+        "name": "provider_type",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Type of provider (e.g., NHS Trust, Private)"
+      },
+      {
+        "name": "ownership_type",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Ownership type of the provider"
+      },
+      {
+        "name": "brand_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Brand identifier if part of a chain"
+      },
+      {
+        "name": "brand_name",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Brand name if part of a chain"
+      },
+      {
+        "name": "address_line_1",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "First line of headquarters address"
+      },
+      {
+        "name": "address_line_2",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Second line of headquarters address"
+      },
+      {
+        "name": "city",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "City of headquarters"
+      },
+      {
+        "name": "county",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "County of headquarters"
+      },
+      {
+        "name": "postcode",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Postcode of headquarters"
+      },
+      {
+        "name": "region",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Region of headquarters"
+      },
+      {
+        "name": "phone_number",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Contact phone number"
+      },
+      {
+        "name": "website",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Provider website URL"
+      },
+      {
+        "name": "companies_house_number",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Companies House registration number"
+      },
+      {
+        "name": "charity_number",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Charity registration number"
+      },
+      {
+        "name": "registration_status",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Current registration status"
+      },
+      {
+        "name": "registration_date",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Date of registration with CQC"
+      },
+      {
+        "name": "deregistration_date",
+        "type": "DATE",
+        "mode": "NULLABLE",
+        "description": "Date of deregistration if applicable"
+      },
+      {
+        "name": "number_of_locations",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Total number of locations operated"
+      },
+      {
+        "name": "inspection_directorate",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "CQC inspection directorate"
+      },
+      {
+        "name": "constituency",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Parliamentary constituency"
+      },
+      {
+        "name": "local_authority",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Local authority area"
+      },
+      {
+        "name": "ingestion_timestamp",
+        "type": "TIMESTAMP",
+        "mode": "REQUIRED",
+        "description": "Timestamp when data was ingested"
+      },
+      {
+        "name": "last_updated",
+        "type": "TIMESTAMP",
+        "mode": "NULLABLE",
+        "description": "Last update timestamp from CQC"
+      }
+    ]
+  },
+  "predictions": {
+    "table_id": "predictions",
+    "description": "ML model predictions for CQC ratings",
+    "schema": [
+      {
+        "name": "prediction_id",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Unique prediction identifier"
+      },
+      {
+        "name": "location_id",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "CQC location identifier"
+      },
+      {
+        "name": "provider_id",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "CQC provider identifier"
+      },
+      {
+        "name": "model_name",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Name of the model used"
+      },
+      {
+        "name": "model_version",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Version of the model"
+      },
+      {
+        "name": "predicted_overall_rating",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Predicted overall rating"
+      },
+      {
+        "name": "predicted_overall_score",
+        "type": "FLOAT64",
+        "mode": "REQUIRED",
+        "description": "Confidence score for overall rating"
+      },
+      {
+        "name": "predicted_safe_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Predicted safe domain rating"
+      },
+      {
+        "name": "predicted_safe_score",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Confidence score for safe rating"
+      },
+      {
+        "name": "predicted_effective_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Predicted effective domain rating"
+      },
+      {
+        "name": "predicted_effective_score",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Confidence score for effective rating"
+      },
+      {
+        "name": "predicted_caring_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Predicted caring domain rating"
+      },
+      {
+        "name": "predicted_caring_score",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Confidence score for caring rating"
+      },
+      {
+        "name": "predicted_responsive_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Predicted responsive domain rating"
+      },
+      {
+        "name": "predicted_responsive_score",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Confidence score for responsive rating"
+      },
+      {
+        "name": "predicted_well_led_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Predicted well-led domain rating"
+      },
+      {
+        "name": "predicted_well_led_score",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Confidence score for well-led rating"
+      },
+      {
+        "name": "feature_importance",
+        "type": "JSON",
+        "mode": "NULLABLE",
+        "description": "Feature importance scores"
+      },
+      {
+        "name": "prediction_timestamp",
+        "type": "TIMESTAMP",
+        "mode": "REQUIRED",
+        "description": "Timestamp when prediction was made"
+      },
+      {
+        "name": "request_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "API request ID for tracking"
+      },
+      {
+        "name": "actual_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Actual rating (for evaluation)"
+      },
+      {
+        "name": "is_correct",
+        "type": "BOOLEAN",
+        "mode": "NULLABLE",
+        "description": "Whether prediction was correct"
+      },
+      {
+        "name": "endpoint_id",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Vertex AI endpoint ID"
+      },
+      {
+        "name": "latency_ms",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Prediction latency in milliseconds"
+      }
+    ]
+  },
+  "ml_features": {
+    "table_id": "ml_features",
+    "description": "Engineered features for ML training",
+    "schema": [
+      {
+        "name": "location_id",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "CQC location identifier"
+      },
+      {
+        "name": "provider_id",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "CQC provider identifier"
+      },
+      {
+        "name": "feature_version",
+        "type": "STRING",
+        "mode": "REQUIRED",
+        "description": "Version of feature engineering pipeline"
+      },
+      {
+        "name": "location_type",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Type of location"
+      },
+      {
+        "name": "provider_type",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Type of provider"
+      },
+      {
+        "name": "ownership_type",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Ownership type"
+      },
+      {
+        "name": "region",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Geographic region"
+      },
+      {
+        "name": "urban_rural_classification",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Urban or rural classification"
+      },
+      {
+        "name": "num_regulated_activities",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Number of regulated activities"
+      },
+      {
+        "name": "num_service_types",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Number of service types"
+      },
+      {
+        "name": "num_specialisms",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Number of specialisms"
+      },
+      {
+        "name": "has_website",
+        "type": "BOOLEAN",
+        "mode": "NULLABLE",
+        "description": "Whether location has website"
+      },
+      {
+        "name": "days_since_registration",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Days since CQC registration"
+      },
+      {
+        "name": "days_since_last_inspection",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Days since last inspection"
+      },
+      {
+        "name": "previous_overall_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Previous overall rating"
+      },
+      {
+        "name": "previous_rating_score",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Previous rating as numeric score"
+      },
+      {
+        "name": "provider_location_count",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Number of locations for provider"
+      },
+      {
+        "name": "provider_avg_rating",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Average rating across provider locations"
+      },
+      {
+        "name": "is_part_of_brand",
+        "type": "BOOLEAN",
+        "mode": "NULLABLE",
+        "description": "Whether part of a brand/chain"
+      },
+      {
+        "name": "brand_avg_rating",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Average rating for brand"
+      },
+      {
+        "name": "number_of_beds",
+        "type": "INTEGER",
+        "mode": "NULLABLE",
+        "description": "Number of beds"
+      },
+      {
+        "name": "bed_occupancy_rate",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Bed occupancy rate if available"
+      },
+      {
+        "name": "staff_turnover_rate",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Staff turnover rate if available"
+      },
+      {
+        "name": "local_area_deprivation_score",
+        "type": "FLOAT64",
+        "mode": "NULLABLE",
+        "description": "Local area deprivation index"
+      },
+      {
+        "name": "created_timestamp",
+        "type": "TIMESTAMP",
+        "mode": "REQUIRED",
+        "description": "When features were created"
+      },
+      {
+        "name": "target_overall_rating",
+        "type": "STRING",
+        "mode": "NULLABLE",
+        "description": "Target rating for training"
+      }
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+name: cqc-prediction-api
+runtime: python311
+entry_point: predict
+trigger:
+  type: http
+  security_level: secure_always
+
+environment_variables:
+  GCP_PROJECT: ${GCP_PROJECT}
+  GCP_REGION: europe-west2
+  VERTEX_ENDPOINT_ID: ${VERTEX_ENDPOINT_ID}
+  MODEL_NAME: cqc-rating-predictor
+
+service_account_email: cqc-prediction-sa@${GCP_PROJECT}.iam.gserviceaccount.com
+
+available_memory_mb: 512
+timeout: 60s
+max_instances: 100
+min_instances: 1
+
+vpc_connector: cqc-vpc-connector
+vpc_connector_egress_settings: PRIVATE_RANGES_ONLY
+
+ingress_settings: ALLOW_ALL

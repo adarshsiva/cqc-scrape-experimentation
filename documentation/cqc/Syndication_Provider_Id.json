@@ -1,0 +1,677 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "properties": {
+    "providerId": {
+      "type": "string"
+    },
+    "locationIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "organisationType": {
+      "type": "string"
+    },
+    "ownershipType": {
+      "type": "string"
+    },
+    "companiesHouseNumber": {
+      "type": "string"
+    },
+    "charityNumber": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "brandId": {
+      "type": "string"
+    },
+    "brandName": {
+      "type": "string"
+    },
+    "uprn": {
+      "type": "string"
+    },
+    "odsCode": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "alsoKnownAs": {
+      "type": "string"
+    },
+    "registrationStatus": {
+      "type": "string"
+    },
+    "registrationDate": {
+      "type": "string"
+    },
+    "deregistrationDate": {
+      "type": "string"
+    },
+    "website": {
+      "type": "string"
+    },
+    "postalAddressLine1": {
+      "type": "string"
+    },
+    "postalAddressLine2": {
+      "type": "string"
+    },
+    "postalAddressTownCity": {
+      "type": "string"
+    },
+    "postalAddressCounty": {
+      "type": "string"
+    },
+    "region": {
+      "type": "string"
+    },
+    "postalCode": {
+      "type": "string"
+    },
+    "onspdLatitude": {
+      "type": "number"
+    },
+    "onspdLongitude": {
+      "type": "number"
+    },
+    "onspdIcbCode": {
+      "type": "string"
+    },
+    "onspdIcbName": {
+      "type": "string"
+    },
+    "mainPhoneNumber": {
+      "type": "string"
+    },
+    "inspectionDirectorate": {
+      "type": "string"
+    },
+    "constituency": {
+      "type": "string"
+    },
+    "localAuthority": {
+      "type": "string"
+    },
+    "lastInspection": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string"
+        }
+      }
+    },
+    "lastReport": {
+      "type": "object",
+      "properties": {
+        "publicationDate": {
+          "type": "string"
+        }
+      }
+    },
+    "contacts": {
+      "type": "array"
+    },
+    "relationships": {
+      "type": "array"
+    },
+    "regulatedActivities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "nominatedIndividual": {
+            "type": "object",
+            "properties": {
+              "personTitle": {
+                "type": "string"
+              },
+              "personGivenName": {
+                "type": "string"
+              },
+              "personFamilyName": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": ["name", "code", "nominatedIndividual"]
+      }
+    },
+    "inspectionAreas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "inspectionAreaId": {
+            "type": "string"
+          },
+          "inspectionAreaName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": ["inspectionAreaId", "inspectionAreaName", "status"]
+      }
+    },
+    "inspectionCategories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "primary": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "name"]
+      }
+    },
+    "currentRatings": {
+      "type": "object",
+      "properties": {
+        "overall": {
+          "type": "object",
+          "properties": {
+            "rating": {
+              "type": "string"
+            },
+            "reportDate": {
+              "type": "string"
+            },
+            "reportLinkId": {
+              "type": "string"
+            },
+            "useOfResources": {
+              "type": "object",
+              "properties": {
+                "summary": {
+                  "type": "string"
+                },
+                "useOfResourcesRating": {
+                  "type": "string"
+                },
+                "combinedQualityRating": {
+                  "type": "string"
+                },
+                "reportDate": {
+                  "type": "string"
+                },
+                "reportLinkId": {
+                  "type": "string"
+                }
+              }
+            },
+            "keyQuestionRatings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "rating": {
+                    "type": "string"
+                  },
+                  "reportDate": {
+                    "type": "string"
+                  },
+                  "reportLinkId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["name", "rating", "reportDate", "reportLinkId"]
+              }
+            }
+          }
+        },
+        "reportDate": {
+          "type": "string"
+        },
+        "serviceRatings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "rating": {
+                "type": "string"
+              },
+              "reportDate": {
+                "type": "string"
+              },
+              "reportLinkId": {
+                "type": "string"
+              },
+              "keyQuestionRatings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "rating": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["name", "rating"]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "rating",
+              "reportDate",
+              "reportLinkId",
+              "keyQuestionRatings"
+            ]
+          }
+        }
+      }
+    },
+    "historicRatings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "reportLinkId": {
+            "type": "string"
+          },
+          "organisationId": {
+            "type": "string"
+          },
+          "reportDate": {
+            "type": "string"
+          },
+          "overall": {
+            "type": "object",
+            "properties": {
+              "rating": {
+                "type": "string"
+              },
+              "useOfResources": {
+                "type": "string",
+                "properties": {
+                  "useOfResourcesSummary": {
+                    "type": "string"
+                  },
+                  "useOfResourcesRating": {
+                    "type": "string"
+                  },
+                  "combinedQualitySummary": {
+                    "type": "string"
+                  },
+                  "combinedQualityRating": {
+                    "type": "string"
+                  }
+                }
+              },
+              "keyQuestionRatings": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "rating": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["name", "rating"]
+                }
+              }
+            }
+          },
+          "serviceRatings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "rating": {
+                  "type": "string"
+                },
+                "reportDate": {
+                  "type": "string"
+                },
+                "reportLinkId": {
+                  "type": "string"
+                },
+                "organisationId": {
+                  "type": "string"
+                },
+                "keyQuestionRatings": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "rating": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["name", "rating"]
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "rating",
+                "reportDate",
+                "reportLinkId",
+                "keyQuestionRatings"
+              ]
+            }
+          }
+        },
+        "required": ["reportLinkId", "reportDate", "overall"]
+      }
+    },
+    "unpublishedReports": {
+      "type": "array",
+      "properties": {
+        "firstVisitDate": {
+          "type": "string"
+        }
+      }
+    },
+    "reports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "linkId": {
+            "type": "string"
+          },
+          "reportDate": {
+            "type": "string"
+          },
+          "reportUri": {
+            "type": "string"
+          },
+          "reportType": {
+            "type": "string"
+          },
+          "firstVisitDate": {
+            "type": "string"
+          },
+          "relatedDocuments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "documentUri": {
+                  "type": "string"
+                },
+                "documentType": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "inspectionLocations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "locationId": {
+                  "type": "string"
+                }
+              },
+              "required": ["locationId"]
+            }
+          }
+        },
+        "required": ["linkId", "reportDate", "reportUri", "reportType"]
+      }
+    },
+    "assessmentServiceGroup": {
+      "type": "array",
+      "items": [
+        {
+          "type": "object",
+          "properties": {
+            "assessmentServiceId": {
+              "type": "string"
+            },
+            "assessmentServiceName": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "startDate": {
+              "type": "string",
+              "format": "date"
+            },
+            "endDate": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          "required": ["assessmentServiceId", "assessmentServiceName", "status"]
+        }
+      ]
+    },
+    "assessment": {
+      "type": "array",
+      "items": [
+        {
+          "type": "object",
+          "properties": {
+            "assessmentPlanPublishedDateTime": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "ratings": {
+              "type": "object",
+              "properties": {
+                "asgRatings": {
+                  "type": "array",
+                  "items": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "assessmentDate": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "assessmentPlanStatus": {
+                          "type": "string"
+                        },
+                        "assessmentPlanId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "rating": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "commentary": {
+                          "type": "string"
+                        },
+                        "commentaryDate": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "narrative": {
+                          "type": "string"
+                        },
+                        "overallPeopleExperience": {
+                          "type": "string"
+                        },
+                        "overallPeopleExperienceDate": {
+                          "type": "string",
+                          "format": "date"
+                        },
+                        "assessorVisitDates": {
+                          "type": "array",
+                          "items": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "visitDates": {
+                                  "type": "string",
+                                  "format": "date"
+                                }
+                              },
+                              "required": ["visitDates"]
+                            }
+                          ]
+                        },
+                        "keyQuestionRatings": {
+                          "type": "array",
+                          "items": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "rating": {
+                                  "type": "string"
+                                },
+                                "commentary": {
+                                  "type": "string"
+                                },
+                                "commentaryDate": {
+                                  "type": "string",
+                                  "format": "date"
+                                },
+                                "narrative": {
+                                  "type": "string"
+                                },
+                                "percengtageScore": {
+                                  "type": "string"
+                                },
+                                "topicareas": {
+                                  "type": "array",
+                                  "items": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "name": {
+                                          "type": "string"
+                                        },
+                                        "qualityStatementId": {
+                                          "type": "integer"
+                                        },
+                                        "evidenceCategory": {
+                                          "type": "array",
+                                          "items": [
+                                            {
+                                              "type": "object",
+                                              "properties": {
+                                                "evidenceCategoryId": {
+                                                  "type": "integer"
+                                                },
+                                                "commentary": {
+                                                  "type": "string"
+                                                },
+                                                "commentaryDate": {
+                                                  "type": "string",
+                                                  "format": "date"
+                                                }
+                                              },
+                                              "required": [
+                                                "evidenceCategoryId",
+                                                "commentary",
+                                                "commentaryDate"
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        "qualityStatementscore": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "qualityStatementId",
+                                        "evidenceCategory",
+                                        "qualityStatementscore"
+                                      ]
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "rating",
+                                "commentary",
+                                "commentaryDate",
+                                "narrative",
+                                "percengtageScore",
+                                "topicareas"
+                              ]
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "assessmentPlanId",
+                        "title",
+                        "assessmentDate",
+                        "assessmentPlanStatus",
+                        "name",
+                        "rating",
+                        "status",
+                        "commentary",
+                        "commentaryDate",
+                        "narrative",
+                        "overallPeopleExperience",
+                        "overallPeopleExperienceDate",
+                        "keyQuestionRatings"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": ["asgRatings"]
+            }
+          },
+          "required": [
+            "title",
+            "assessmentDate",
+            "assessmentPlanStatus",
+            "assessmentPlanPublishedDateTime",
+            "ratings"
+          ]
+        }
+      ]
+    }
+  }
+}

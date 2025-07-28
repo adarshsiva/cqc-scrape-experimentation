@@ -1,0 +1,16 @@
+FROM apache/beam_python3.11_sdk:2.53.0
+
+# Install additional dependencies
+RUN pip install --no-cache-dir \
+    google-cloud-bigquery==3.13.0 \
+    google-cloud-storage==2.13.0 \
+    pandas==2.0.3 \
+    numpy==1.24.3
+
+# Set working directory
+WORKDIR /pipeline
+
+# Copy pipeline code
+COPY src/etl/ /pipeline/
+
+ENTRYPOINT ["/bin/bash"]

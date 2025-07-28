@@ -1,0 +1,58 @@
+# ETL Pipeline Requirements for CQC Rating Predictor
+
+# Apache Beam and GCP Extensions
+apache-beam[gcp]==2.53.0
+
+# Google Cloud Libraries
+google-cloud-storage==2.13.0
+google-cloud-bigquery==3.13.0
+google-cloud-bigquery-storage==2.22.0
+google-cloud-dataflow==0.8.0
+google-cloud-pubsub==2.18.4
+google-cloud-secret-manager==2.17.0
+google-cloud-logging==3.8.0
+
+# Data Processing
+pandas==2.1.4
+numpy==1.24.4
+pyarrow==14.0.2
+
+# Data Validation
+great-expectations==0.18.7
+pandera==0.17.2
+
+# Date/Time Handling
+python-dateutil==2.8.2
+pytz==2023.3
+
+# HTTP Requests
+requests==2.31.0
+urllib3==2.1.0
+
+# JSON Processing
+orjson==3.9.10
+jsonschema==4.20.0
+
+# Configuration
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Code Quality
+black==23.12.1
+flake8==7.0.0
+mypy==1.7.1
+pylint==3.0.3
+
+# Utilities
+tqdm==4.66.1
+click==8.1.7
+rich==13.7.0
+
+# Type Hints
+types-requests==2.31.0.10
+types-python-dateutil==2.8.19.14

@@ -1,0 +1,317 @@
+# Vertex AI Configuration for CQC Rating Predictor ML System
+
+# Project Settings
+project:
+  id: ${GCP_PROJECT_ID}  # Set via environment variable
+  region: ${GCP_REGION}   # Set via environment variable
+  service_account: ${VERTEX_AI_SERVICE_ACCOUNT}  # Optional
+
+# Storage Settings
+storage:
+  staging_bucket: ${GCS_BUCKET}/vertex-ai/staging
+  pipeline_root: ${GCS_BUCKET}/vertex-ai/pipelines
+  model_artifacts: ${GCS_BUCKET}/vertex-ai/models
+  tensorboard_logs: ${GCS_BUCKET}/vertex-ai/tensorboard
+
+# Dataset Configuration
+datasets:
+  cqc_ratings:
+    display_name: "CQC Ratings Dataset"
+    bigquery_source: "${GCP_PROJECT_ID}.cqc_ml.ml_features"
+    data_split:
+      training_fraction: 0.8
+      validation_fraction: 0.1
+      test_fraction: 0.1
+      stratify_column: "target_overall_rating"
+    
+# Feature Store Configuration (if using Vertex AI Feature Store)
+feature_store:
+  name: "cqc_feature_store"
+  online_serving_config:
+    scaling:
+      min_node_count: 1
+      max_node_count: 3
+  entity_types:
+    - name: "location"
+      description: "CQC location features"
+      id_column: "location_id"
+    - name: "provider" 
+      description: "CQC provider features"
+      id_column: "provider_id"
+
+# Model Training Configuration
+training:
+  # XGBoost Configuration
+  xgboost:
+    display_name: "CQC Rating Predictor - XGBoost"
+    container_uri: "gcr.io/cloud-aiplatform/training/xgboost-cpu.1-1:latest"
+    model_parameters:
+      objective: "multi:softprob"
+      num_class: 5  # Outstanding, Good, Requires improvement, Inadequate, Not yet rated
+      max_depth: 8
+      learning_rate: 0.1
+      n_estimators: 200
+      subsample: 0.8
+      colsample_bytree: 0.8
+      reg_alpha: 0.1
+      reg_lambda: 1.0
+      eval_metric: "mlogloss"
+      early_stopping_rounds: 20
+    machine_spec:
+      machine_type: "n1-standard-8"
+      accelerator_count: 0
+    replica_count: 1
+    training_timeout: "7200s"  # 2 hours
+
+  # LightGBM Configuration  
+  lightgbm:
+    display_name: "CQC Rating Predictor - LightGBM"
+    container_uri: "gcr.io/cloud-aiplatform/training/scikit-learn-cpu.0-23:latest"
+    model_parameters:
+      objective: "multiclass"
+      num_class: 5
+      boosting_type: "gbdt"
+      num_leaves: 31
+      learning_rate: 0.05
+      feature_fraction: 0.9
+      bagging_fraction: 0.8
+      bagging_freq: 5
+      verbose: 0
+      metric: "multi_logloss"
+      num_iterations: 300
+      early_stopping_round: 20
+    machine_spec:
+      machine_type: "n1-standard-8"
+      accelerator_count: 0
+    replica_count: 1
+    training_timeout: "7200s"
+
+  # AutoML Configuration
+  automl:
+    display_name: "CQC Rating Predictor - AutoML"
+    prediction_type: "classification"
+    optimization_objective: "maximize-au-prc"
+    budget_milli_node_hours: 8000  # 8 node hours
+    model_display_name: "cqc_rating_automl"
+    disable_early_stopping: false
+    export_evaluated_data_items: true
+    excluded_columns:
+      - "location_id"
+      - "provider_id"
+      - "created_timestamp"
+
+  # Neural Network Configuration (TensorFlow)
+  neural_network:
+    display_name: "CQC Rating Predictor - Neural Network"
+    container_uri: "gcr.io/cloud-aiplatform/training/tf-cpu.2-8:latest"
+    model_architecture:
+      input_dim: null  # Set dynamically based on features
+      hidden_layers:
+        - units: 256
+          activation: "relu"
+          dropout: 0.3
+        - units: 128
+          activation: "relu"
+          dropout: 0.3
+        - units: 64
+          activation: "relu"
+          dropout: 0.2
+      output_units: 5
+      output_activation: "softmax"
+    training_parameters:
+      batch_size: 32
+      epochs: 100
+      learning_rate: 0.001
+      optimizer: "adam"
+      loss: "categorical_crossentropy"
+      metrics: ["accuracy", "AUC"]
+      early_stopping_patience: 10
+      reduce_lr_patience: 5
+    machine_spec:
+      machine_type: "n1-standard-16"
+      accelerator_type: "NVIDIA_TESLA_T4"
+      accelerator_count: 1
+    replica_count: 1
+    training_timeout: "14400s"  # 4 hours
+
+# Hyperparameter Tuning Configuration
+hyperparameter_tuning:
+  algorithm: "ALGORITHM_UNSPECIFIED"  # Bayesian optimization
+  max_trial_count: 20
+  parallel_trial_count: 4
+  max_failed_trial_count: 5
+  search_space:
+    xgboost:
+      max_depth:
+        type: "INTEGER"
+        min: 3
+        max: 10
+      learning_rate:
+        type: "DOUBLE"
+        min: 0.01
+        max: 0.3
+        scale: "LOG"
+      n_estimators:
+        type: "INTEGER"
+        min: 100
+        max: 500
+      subsample:
+        type: "DOUBLE"
+        min: 0.6
+        max: 1.0
+      reg_alpha:
+        type: "DOUBLE"
+        min: 0.0
+        max: 1.0
+      reg_lambda:
+        type: "DOUBLE"
+        min: 0.0
+        max: 2.0
+
+# Model Evaluation Configuration
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall" 
+    - "f1_score"
+    - "auc_roc"
+    - "auc_pr"
+    - "log_loss"
+    - "confusion_matrix"
+  slicing_specs:
+    - feature: "location_type"
+    - feature: "region"
+    - feature: "ownership_type"
+  fairness_indicators:
+    - feature: "region"
+      threshold: 0.5
+  model_explanation:
+    enable: true
+    explanation_method: "sampled_shapley"
+    explanation_sample_count: 100
+
+# Model Deployment Configuration
+deployment:
+  # Online Prediction Endpoint
+  online_endpoint:
+    display_name: "cqc-rating-predictor-endpoint"
+    machine_spec:
+      machine_type: "n1-standard-4"
+    automatic_resources:
+      min_replica_count: 2
+      max_replica_count: 10
+      target_cpu_utilization: 60
+    traffic_split:
+      # Supports gradual rollout
+      # e.g., {"model_v1": 80, "model_v2": 20}
+    prediction_logging:
+      enable: true
+      sampling_rate: 0.1
+      bigquery_destination: "${GCP_PROJECT_ID}.cqc_ml.predictions"
+
+  # Batch Prediction Configuration
+  batch_prediction:
+    display_name: "cqc-rating-batch-prediction"
+    input_format: "bigquery"
+    output_format: "bigquery"
+    machine_spec:
+      machine_type: "n1-standard-8"
+      accelerator_count: 0
+    starting_replica_count: 2
+    max_replica_count: 10
+    
+# Model Registry Configuration
+model_registry:
+  model_name: "cqc-rating-predictor"
+  labels:
+    env: "production"
+    team: "data-science"
+    project: "cqc-ratings"
+  version_aliases:
+    - "production"
+    - "staging"
+    - "champion"
+    - "challenger"
+
+# Pipeline Configuration
+pipelines:
+  # Training Pipeline
+  training_pipeline:
+    display_name: "CQC Rating Training Pipeline"
+    schedule: "0 2 * * 0"  # Weekly on Sunday at 2 AM
+    enable_caching: true
+    service_account: ${VERTEX_AI_SERVICE_ACCOUNT}
+    network: ${VPC_NETWORK}  # Optional VPC
+    
+  # Prediction Pipeline
+  prediction_pipeline:
+    display_name: "CQC Rating Prediction Pipeline"
+    schedule: "0 6 * * *"  # Daily at 6 AM
+    enable_caching: false
+    
+  # Feature Engineering Pipeline
+  feature_pipeline:
+    display_name: "CQC Feature Engineering Pipeline"
+    schedule: "0 4 * * *"  # Daily at 4 AM
+    enable_caching: true
+
+# Monitoring Configuration
+monitoring:
+  # Model Monitoring
+  model_monitoring:
+    display_name: "CQC Rating Model Monitor"
+    prediction_sampling_rate: 0.1
+    monitoring_interval_hours: 24
+    alert_config:
+      email_addresses:
+        - "data-team@example.com"
+      notification_channels:
+        - ${MONITORING_NOTIFICATION_CHANNEL}
+    drift_thresholds:
+      categorical_features: 0.3
+      numerical_features: 0.3
+    skew_thresholds:
+      categorical_features: 0.3
+      numerical_features: 0.3
+    attribution_score_drift_thresholds:
+      - 0.3
+    
+  # Feature Monitoring
+  feature_monitoring:
+    anomaly_detection: true
+    drift_detection: true
+    monitoring_interval_hours: 24
+
+# Experiment Tracking
+experiment_tracking:
+  tensorboard:
+    display_name: "CQC Rating Experiments"
+    description: "Experiment tracking for CQC rating prediction models"
+  
+  metadata_store:
+    display_name: "CQC ML Metadata"
+    description: "Metadata tracking for ML artifacts"
+
+# Security Configuration
+security:
+  encryption:
+    kms_key_name: ${KMS_KEY_NAME}  # Customer-managed encryption key
+  vpc_service_controls:
+    enable: true
+    security_perimeter: ${VPC_SC_PERIMETER}
+  private_endpoints:
+    enable: true
+    network: ${VPC_NETWORK}
+    
+# Cost Optimization
+cost_optimization:
+  preemptible_nodes:
+    enable: true
+    percentage: 80  # Use 80% preemptible for training
+  auto_shutdown:
+    enable: true
+    idle_timeout_minutes: 60
+  spot_pricing:
+    enable: true
+    max_price_multiplier: 2.0  # Max 2x the on-demand price

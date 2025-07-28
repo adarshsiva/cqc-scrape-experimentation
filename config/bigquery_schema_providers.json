@@ -1,0 +1,20 @@
+[
+  {"name": "provider_id", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "name", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "type", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "ownership_type", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "brand_id", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "brand_name", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "registration_status", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "registration_date", "type": "DATE", "mode": "NULLABLE"},
+  {"name": "companies_house_number", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "charity_number", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "postal_code", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "phone", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "region", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "local_authority", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "inspection_directorate", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "constituency", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "ingestion_timestamp", "type": "TIMESTAMP", "mode": "REQUIRED"},
+  {"name": "processing_timestamp", "type": "TIMESTAMP", "mode": "NULLABLE"}
+]

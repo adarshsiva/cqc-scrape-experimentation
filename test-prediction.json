@@ -1,0 +1,20 @@
+{
+  "instances": [{
+    "days_since_last_inspection": 180,
+    "num_regulated_activities": 5,
+    "region": "London",
+    "type": "Residential social care",
+    "postal_code": "SW1A 1AA",
+    "registration_status": "Registered",
+    "ownership_type": "Private",
+    "has_specialisms": true,
+    "num_service_types": 3,
+    "days_since_registration": 1825,
+    "local_authority": "Westminster",
+    "inspection_directorate": "Adult social care",
+    "constituency": "Cities of London and Westminster",
+    "regulated_activities": ["Accommodation for persons who require nursing or personal care"],
+    "service_types": ["Care home service with nursing"],
+    "specialisms": ["Dementia"]
+  }]
+}

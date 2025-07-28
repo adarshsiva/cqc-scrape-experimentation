@@ -1,0 +1,47 @@
+steps:
+  # Install dependencies
+  - name: 'python:3.11'
+    entrypoint: 'pip'
+    args: ['install', '-r', 'requirements.txt', '--user']
+
+  # Run ETL pipeline for locations
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'python'
+    args:
+      - 'dataflow_pipeline.py'
+      - '--runner=DataflowRunner'
+      - '--project=$PROJECT_ID'
+      - '--region=europe-west2'
+      - '--temp_location=gs://$PROJECT_ID-cqc-dataflow-temp/tmp'
+      - '--staging_location=gs://$PROJECT_ID-cqc-dataflow-temp/staging'
+      - '--job_name=cqc-etl-locations-$BUILD_ID'
+      - '--setup_file=./setup.py'
+      - '--data_type=locations'
+      - '--input_pattern=gs://${PROJECT_ID}-cqc-raw-data/raw/locations/*.json'
+      - '--output_dataset=cqc_data'
+      - '--output_table=locations'
+    env:
+      - 'PYTHONPATH=/workspace/.local/lib/python3.11/site-packages'
+
+  # Run ETL pipeline for providers
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'python'
+    args:
+      - 'dataflow_pipeline.py'
+      - '--runner=DataflowRunner'
+      - '--project=$PROJECT_ID'
+      - '--region=europe-west2'
+      - '--temp_location=gs://${PROJECT_ID}-cqc-dataflow-temp/tmp'
+      - '--staging_location=gs://${PROJECT_ID}-cqc-dataflow-temp/staging'
+      - '--job_name=cqc-etl-providers-$BUILD_ID'
+      - '--setup_file=./setup.py'
+      - '--data_type=providers'
+      - '--input_pattern=gs://$PROJECT_ID-cqc-raw-data/raw/providers/*.json'
+      - '--output_dataset=cqc_data'
+      - '--output_table=providers'
+    env:
+      - 'PYTHONPATH=/workspace/.local/lib/python3.11/site-packages'
+
+timeout: 3600s
+options:
+  logging: CLOUD_LOGGING_ONLY

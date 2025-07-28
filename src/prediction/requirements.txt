@@ -1,0 +1,17 @@
+# Flask and server
+Flask==3.0.0
+gunicorn==21.2.0
+
+# Google Cloud Libraries
+google-cloud-aiplatform==1.38.1
+google-cloud-logging==3.8.0
+
+# Data Processing
+numpy==1.24.3
+pandas==2.0.3
+
+# HTTP and JSON handling
+requests==2.31.0
+
+# Additional utilities
+python-dateutil==2.8.2

@@ -1,0 +1,21 @@
+[
+  {"name": "location_id", "type": "STRING", "mode": "REQUIRED"},
+  {"name": "provider_id", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "days_since_last_inspection", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "days_since_registration", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "num_regulated_activities", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "num_specialisms", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "num_gac_service_types", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "overall_rating_score", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "average_rating_score", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "has_inadequate_rating", "type": "BOOLEAN", "mode": "NULLABLE"},
+  {"name": "total_bed_capacity", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "is_active", "type": "BOOLEAN", "mode": "NULLABLE"},
+  {"name": "type_encoded", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "ownership_type_encoded", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "region_encoded", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "inspection_directorate_encoded", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "registration_status_encoded", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "feature_extraction_timestamp", "type": "TIMESTAMP", "mode": "REQUIRED"},
+  {"name": "label", "type": "STRING", "mode": "NULLABLE"}
+]
