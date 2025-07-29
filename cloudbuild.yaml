@@ -1,0 +1,136 @@
+# Cloud Build configuration for fetching CQC data
+steps:
+  # Step 1: Fetch CQC data using the working script
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Install dependencies
+        apt-get update && apt-get install -y curl jq
+        
+        # Get API key from Secret Manager
+        API_KEY=$(gcloud secrets versions access latest --secret="cqc-subscription-key")
+        echo "API Key retrieved (first 10 chars): $${API_KEY:0:10}..."
+        
+        # Test API access
+        echo "Testing CQC API access..."
+        RESPONSE=$(curl -s -w "\nSTATUS:%{http_code}" \
+          -H "Ocp-Apim-Subscription-Key: $$API_KEY" \
+          "https://api.service.cqc.org.uk/public/v1/locations?page=1&perPage=1")
+        
+        STATUS=$(echo "$$RESPONSE" | grep "STATUS:" | cut -d':' -f2)
+        if [ "$$STATUS" = "200" ]; then
+          echo "✅ API access successful!"
+        else
+          echo "❌ API access failed with status: $$STATUS"
+          exit 1
+        fi
+        
+        # Fetch detailed location data
+        echo "Fetching locations with ratings..."
+        mkdir -p /workspace/data
+        
+        # Get first 100 locations
+        curl -s -H "Ocp-Apim-Subscription-Key: $$API_KEY" \
+          "https://api.service.cqc.org.uk/public/v1/locations?page=1&perPage=100" \
+          -o /workspace/data/locations_list.json
+        
+        # Extract location IDs and fetch details for each
+        echo "[]" > /workspace/data/locations_detailed.json
+        
+        # Process each location
+        LOCATION_IDS=$(jq -r '.locations[].locationId' /workspace/data/locations_list.json | head -50)
+        COUNT=0
+        
+        for LOCATION_ID in $$LOCATION_IDS; do
+          COUNT=$((COUNT + 1))
+          echo "Fetching location $$COUNT/50: $$LOCATION_ID"
+          
+          # Fetch location details
+          DETAILS=$(curl -s -H "Ocp-Apim-Subscription-Key: $$API_KEY" \
+            "https://api.service.cqc.org.uk/public/v1/locations/$$LOCATION_ID")
+          
+          # Check if it has ratings
+          if echo "$$DETAILS" | jq -e '.currentRatings.overall.rating' > /dev/null 2>&1; then
+            # Add to our collection
+            jq ". += [$$DETAILS]" /workspace/data/locations_detailed.json > /workspace/data/tmp.json
+            mv /workspace/data/tmp.json /workspace/data/locations_detailed.json
+            
+            RATING=$(echo "$$DETAILS" | jq -r '.currentRatings.overall.rating')
+            NAME=$(echo "$$DETAILS" | jq -r '.name')
+            echo "  ✅ $$NAME - Rating: $$RATING"
+          fi
+          
+          # Rate limiting
+          sleep 0.2
+        done
+        
+        echo "Fetched $(jq length /workspace/data/locations_detailed.json) locations with ratings"
+    env:
+      - 'CLOUDSDK_CORE_PROJECT=machine-learning-exp-467008'
+    timeout: '1200s'
+    
+  # Step 2: Upload to Cloud Storage
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args:
+      - 'cp'
+      - '/workspace/data/locations_detailed.json'
+      - 'gs://machine-learning-exp-467008-cqc-raw-data/cloud_build/${BUILD_ID}_locations_detailed.json'
+      
+  # Step 3: Load into BigQuery
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Create a NDJSON file for BigQuery
+        jq -c '.[] | {
+          locationId: .locationId,
+          name: .name,
+          numberOfBeds: .numberOfBeds,
+          registrationDate: .registrationDate,
+          lastInspectionDate: .lastInspection.date,
+          postalCode: .postalCode,
+          region: .region,
+          localAuthority: .localAuthority,
+          providerId: .providerId,
+          locationType: .type,
+          overallRating: .currentRatings.overall.rating,
+          safeRating: .currentRatings.safe.rating,
+          effectiveRating: .currentRatings.effective.rating,
+          caringRating: .currentRatings.caring.rating,
+          responsiveRating: .currentRatings.responsive.rating,
+          wellLedRating: .currentRatings.wellLed.rating,
+          regulatedActivitiesCount: (.regulatedActivities | length),
+          specialismsCount: (.specialisms | length),
+          serviceTypesCount: (.gacServiceTypes | length),
+          rawData: (. | tostring)
+        }' /workspace/data/locations_detailed.json > /workspace/data/locations_bq.ndjson
+        
+        # Load into BigQuery
+        bq load --source_format=NEWLINE_DELIMITED_JSON \
+          --autodetect \
+          --replace \
+          cqc_data.locations_detailed \
+          /workspace/data/locations_bq.ndjson
+          
+        echo "✅ Data loaded into BigQuery"
+        
+        # Show summary
+        bq query --use_legacy_sql=false "
+        SELECT 
+          COUNT(*) as total_locations,
+          COUNTIF(overallRating = 'Outstanding') as outstanding,
+          COUNTIF(overallRating = 'Good') as good,
+          COUNTIF(overallRating = 'Requires improvement') as requires_improvement,
+          COUNTIF(overallRating = 'Inadequate') as inadequate
+        FROM cqc_data.locations_detailed
+        "
+        
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_32'  # Maximum CPU for fastest processing
+  diskSizeGb: 100
+  
+timeout: '3600s'

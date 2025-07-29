@@ -1,0 +1,130 @@
+# Cloud Workflow for CQC Data Ingestion
+# This workflow fetches CQC data in batches and stores in BigQuery
+
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT_ID")}
+          - location: "europe-west2"
+          - limit: ${default(args.limit, 1000)}
+          - batch_size: 100
+          - locations_fetched: 0
+          - locations_with_ratings: []
+          
+    - get_api_key:
+        call: googleapis.secretmanager.v1.projects.secrets.versions.access
+        args:
+          name: $${"projects/" + project_id + "/secrets/cqc-subscription-key/versions/latest"}
+        result: api_key_response
+        
+    - decode_api_key:
+        assign:
+          - api_key: ${text.decode(api_key_response.payload.data, "UTF-8")}
+          
+    - fetch_locations_loop:
+        for:
+          value: page
+          range: [1, 20]  # Fetch up to 20 pages
+          steps:
+            - check_limit:
+                switch:
+                  - condition: ${locations_fetched >= limit}
+                    next: save_to_bigquery
+                    
+            - fetch_page:
+                try:
+                  call: http.get
+                  args:
+                    url: $${"https://api.service.cqc.org.uk/public/v1/locations?page=" + string(page) + "&perPage=" + string(batch_size)}
+                    headers:
+                      Ocp-Apim-Subscription-Key: ${api_key}
+                    timeout: 30
+                  result: page_response
+                except:
+                  as: e
+                  steps:
+                    - log_error:
+                        call: sys.log
+                        args:
+                          text: $${"Error fetching page " + string(page) + ": " + json.encode_to_string(e)}
+                          severity: ERROR
+                    - continue_next_page:
+                        next: continue
+                        
+            - process_locations:
+                for:
+                  value: location
+                  in: ${page_response.body.locations}
+                  steps:
+                    - check_location_limit:
+                        switch:
+                          - condition: ${locations_fetched >= limit}
+                            next: break
+                            
+                    - fetch_location_details:
+                        try:
+                          call: http.get
+                          args:
+                            url: $${"https://api.service.cqc.org.uk/public/v1/locations/" + location.locationId}
+                            headers:
+                              Ocp-Apim-Subscription-Key: ${api_key}
+                            timeout: 30
+                          result: location_details
+                        except:
+                          as: e
+                          steps:
+                            - log_detail_error:
+                                call: sys.log
+                                args:
+                                  text: $${"Error fetching details for " + location.locationId + ": " + json.encode_to_string(e)}
+                                  severity: WARNING
+                            - continue_next:
+                                next: continue
+                                
+                    - check_ratings:
+                        switch:
+                          - condition: ${"currentRatings" in location_details.body}
+                            steps:
+                              - add_location:
+                                  assign:
+                                    - locations_with_ratings: ${list.concat(locations_with_ratings, location_details.body)}
+                                    - locations_fetched: ${locations_fetched + 1}
+                                    
+                              - log_progress:
+                                  call: sys.log
+                                  args:
+                                    text: $${"Fetched location " + string(locations_fetched) + "/" + string(limit) + ": " + location_details.body.name}
+                                    
+                    - rate_limit:
+                        call: sys.sleep
+                        args:
+                          seconds: 0.1
+                          
+    - save_to_bigquery:
+        call: googleapis.bigquerydatatransfer.v1.projects.locations.transferConfigs.startManualRuns
+        args:
+          parent: $${"projects/" + project_id + "/locations/" + location}
+          body:
+            requestedTimeRange:
+              startTime: ${sys.now()}
+        result: bq_result
+        
+    - save_to_storage:
+        call: googleapis.storage.v1.objects.insert
+        args:
+          bucket: "machine-learning-exp-467008-cqc-raw-data"
+          body:
+            name: $${"workflow_data/locations_" + text.substring(sys.now(), 0, 19) + ".json"}
+            contentType: "application/json"
+          uploadType: media
+          media:
+            body: ${json.encode_to_string(locations_with_ratings)}
+        result: gcs_result
+        
+    - return_summary:
+        return:
+          locations_fetched: ${locations_fetched}
+          gcs_path: ${gcs_result.name}
+          timestamp: ${sys.now()}
