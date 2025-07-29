@@ -1,0 +1,77 @@
+# CQC Alert Notification Configuration
+
+# Email Configuration
+email:
+  enabled: true
+  smtp:
+    host: smtp.gmail.com
+    port: 587
+    use_tls: true
+  sender:
+    email: ${SENDER_EMAIL}  # Set via environment variable
+    name: "CQC Risk Monitor"
+  recipients:
+    primary:
+      - alerts@healthcare-org.com
+      - cqc-team@healthcare-org.com
+    cc:
+      - management@healthcare-org.com
+  templates:
+    subject_prefix: "[CQC ALERT]"
+    
+# Webhook Configuration  
+webhook:
+  enabled: true
+  endpoints:
+    - name: "primary"
+      url: ${WEBHOOK_URL}  # Set via environment variable
+      headers:
+        Content-Type: "application/json"
+        X-API-Key: ${WEBHOOK_API_KEY}
+      timeout: 30
+      retry_count: 3
+      
+# Slack Configuration
+slack:
+  enabled: false
+  webhook_url: ${SLACK_WEBHOOK_URL}
+  channels:
+    high_risk: "#cqc-high-risk"
+    general: "#cqc-alerts"
+  mention_users:
+    - "@cqc-oncall"
+    
+# Microsoft Teams Configuration    
+teams:
+  enabled: false
+  webhook_url: ${TEAMS_WEBHOOK_URL}
+  
+# Alert Thresholds
+thresholds:
+  high_risk:
+    min_score: 70.0
+    auto_escalate: true
+  critical:
+    min_score: 85.0
+    immediate_notification: true
+    
+# Notification Rules
+rules:
+  - name: "business_hours"
+    schedule: "Mon-Fri 09:00-17:00"
+    channels: ["email", "slack"]
+  - name: "after_hours"
+    schedule: "Mon-Fri 17:00-09:00,Sat,Sun"
+    channels: ["email", "webhook"]
+  - name: "critical_always"
+    condition: "risk_score >= 85"
+    channels: ["email", "webhook", "slack", "teams"]
+    
+# Rate Limiting
+rate_limits:
+  per_location:
+    max_alerts: 1
+    window_hours: 24
+  global:
+    max_alerts: 50
+    window_hours: 1

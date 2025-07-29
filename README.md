@@ -239,6 +239,44 @@ docker-compose up -d
 
 [Your License Here]
 
+## Documentation
+
+### Core Documentation
+- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Step-by-step deployment instructions with prerequisites and verification
+- **[Operational Runbook](RUNBOOK.md)** - Daily operations, monitoring, troubleshooting, and incident response procedures
+- **[Architecture Documentation](ARCHITECTURE.md)** - Comprehensive system architecture with diagrams
+
+### Additional Resources
+- **[API Documentation](docs/CQC_API_GUIDE.md)** - CQC API integration guide
+- **[Development Guidelines](CLAUDE.md)** - Project conventions and development setup
+- **[Deployment Plan](deployment-plan.md)** - Detailed implementation roadmap
+
+### GCP Service Documentation
+All GCP service-specific documentation is available in the `/documentation` directory:
+- [Cloud Functions](documentation/gcp/cloud-functions.md)
+- [Cloud Storage](documentation/gcp/cloud-storage.md)
+- [Cloud Dataflow](documentation/gcp/cloud-dataflow.md)
+- [BigQuery](documentation/gcp/bigquery.md)
+- [Vertex AI](documentation/gcp/vertex-ai.md)
+- [Cloud Composer](documentation/gcp/cloud-composer.md)
+- [Secret Manager](documentation/gcp/secret-manager.md)
+- [Cloud Scheduler](documentation/gcp/cloud-scheduler.md)
+
+### Infrastructure as Code
+- [Terraform GCP Provider](documentation/terraform/gcp-provider.md) - IaC configurations
+
+## Quick Links
+
+### Deployment
+- [Deploy Infrastructure](terraform/) - Terraform configurations
+- [Deploy Functions](deploy-functions.sh) - Cloud Functions deployment
+- [Train Models](train-models.sh) - ML model training
+
+### Operations
+- [Run ETL Pipeline](run-etl.sh) - Data processing
+- [Test Predictions](scripts/test_prediction.py) - API testing
+- [Monitor System](RUNBOOK.md#monitoring) - Monitoring guide
+
 ## Contributing
 
 Please read CONTRIBUTING.md for details on our code of conduct and the process for submitting pull requests.

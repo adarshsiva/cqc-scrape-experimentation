@@ -14,14 +14,14 @@ logger = logging.getLogger(__name__)
 class CQCAPIClient:
     """Client for interacting with CQC API."""
     
-    BASE_URL = "https://api.cqc.org.uk/public/v1"
+    BASE_URL = "https://api.service.cqc.org.uk/public/v1"
     
     def __init__(self, subscription_key: str, partner_code: str):
         self.subscription_key = subscription_key
         self.partner_code = partner_code
         self.session = requests.Session()
         self.session.headers.update({
-            'subscription-key': self.subscription_key
+            'Ocp-Apim-Subscription-Key': self.subscription_key
         })
     
     def _make_request(self, endpoint: str, params: Optional[Dict] = None) -> Dict:

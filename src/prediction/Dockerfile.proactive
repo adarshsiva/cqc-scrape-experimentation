@@ -1,0 +1,34 @@
+# Use Python 3.11 slim image
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies for LightGBM and XGBoost
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements file
+COPY requirements_proactive.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements_proactive.txt
+
+# Copy application code
+COPY proactive_predictor.py .
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
+ENV GCP_PROJECT=machine-learning-exp-467008
+ENV MODEL_BUCKET=machine-learning-exp-467008-cqc-ml-artifacts
+ENV MODEL_PATH=models/proactive/model_package.pkl
+
+# Expose port
+EXPOSE 8080
+
+# Run the application with gunicorn for production
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 300 proactive_predictor:app

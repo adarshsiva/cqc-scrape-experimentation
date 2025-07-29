@@ -7,6 +7,9 @@ This directory contains the machine learning pipeline components for the CQC Rat
 ```
 ml/
 ├── features.py              # Feature engineering module
+├── train_proactive_model.py # Proactive risk detection training
+├── test_proactive_training.py # Test script with synthetic data
+├── simple_trainer.py        # Basic local training script
 ├── pipeline/
 │   ├── components.py       # Vertex AI pipeline components
 │   └── pipeline.py         # Main pipeline orchestration
@@ -16,7 +19,27 @@ ml/
 
 ## Components
 
-### 1. Feature Engineering (`features.py`)
+### 1. Proactive Model Training (`train_proactive_model.py`)
+
+The `ProactiveModelTrainer` class implements a comprehensive risk detection system:
+
+- **Multi-Model Approach**: Trains XGBoost, LightGBM, and Random Forest models
+- **Ensemble Predictions**: Combines predictions from all models for improved accuracy
+- **Risk Detection**: Identifies healthcare providers at risk of rating downgrades
+- **Feature Engineering**: Automatic encoding, scaling, and feature preparation
+- **Model Persistence**: Saves models and metadata to Google Cloud Storage
+- **Performance Metrics**: Comprehensive evaluation including AUC, precision, recall, F1
+
+**Usage:**
+```bash
+# Run the proactive model training
+python train_proactive_model.py
+
+# Test with synthetic data
+python test_proactive_training.py
+```
+
+### 2. Feature Engineering (`features.py`)
 
 The `CQCFeatureEngineer` class provides comprehensive feature engineering capabilities:
 
@@ -27,7 +50,7 @@ The `CQCFeatureEngineer` class provides comprehensive feature engineering capabi
 - **Aggregated Features**: Count of regulated activities, regional statistics
 - **Feature Selection**: Statistical methods (chi2, f_classif) for selecting top features
 
-### 2. Pipeline Components (`pipeline/components.py`)
+### 3. Pipeline Components (`pipeline/components.py`)
 
 Reusable Vertex AI pipeline components:
 
@@ -39,7 +62,7 @@ Reusable Vertex AI pipeline components:
 - **model_evaluation_component**: Evaluates models and makes deployment decisions
 - **model_deployment_component**: Deploys models to Vertex AI Endpoints
 
-### 3. Main Pipeline (`pipeline/pipeline.py`)
+### 4. Main Pipeline (`pipeline/pipeline.py`)
 
 The `cqc_ml_pipeline` orchestrates the entire ML workflow:
 

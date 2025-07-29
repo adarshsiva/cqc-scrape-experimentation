@@ -1,0 +1,33 @@
+# CQC Alert Notification Service Requirements
+
+# Google Cloud dependencies
+google-cloud-bigquery>=3.13.0
+google-cloud-secret-manager>=2.16.0
+
+# Web framework for Cloud Functions
+flask>=2.3.0
+functions-framework>=3.4.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Email functionality
+secure-smtplib>=0.1.1
+
+# HTTP requests
+requests>=2.31.0
+
+# Template rendering
+jinja2>=3.1.0
+
+# Configuration management
+pyyaml>=6.0
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-mock>=3.11.0
+pytest-cov>=4.1.0
+
+# Type hints
+typing-extensions>=4.7.0
