@@ -1,5 +1,5 @@
 # CQC Rating Predictor - Current Status
-*Last Updated: 2025-07-29*
+*Last Updated: 2025-07-30*
 
 ## 🏗️ Infrastructure Status
 
@@ -8,11 +8,13 @@
    - `cqc-data-processor` - Processes CQC data from API
    - `cqc-synthetic-loader` - Loads synthetic data to BigQuery
    - `cqc-model-trainer` - (Ready to deploy) Trains ML models
+   - `cqc-data-fetcher` - (Ready to deploy) Fetches real CQC data with ratings
 
 2. **Container Images**
    - `gcr.io/machine-learning-exp-467008/cqc-data-processor`
    - `gcr.io/machine-learning-exp-467008/cqc-data-loader`
    - `gcr.io/machine-learning-exp-467008/cqc-model-trainer` (Ready to build)
+   - `gcr.io/machine-learning-exp-467008/cqc-data-fetcher` (Ready to build)
 
 3. **BigQuery Resources**
    - Dataset: `cqc_data`
