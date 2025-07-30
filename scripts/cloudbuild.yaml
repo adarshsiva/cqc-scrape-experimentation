@@ -1,0 +1,28 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/cqc-data-processor', '-f', 'Dockerfile.process', '.']
+  
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/cqc-data-processor']
+  
+  # Deploy to Cloud Run Job
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'jobs'
+      - 'deploy'
+      - 'cqc-data-processor'
+      - '--image=gcr.io/$PROJECT_ID/cqc-data-processor'
+      - '--region=europe-west2'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--task-timeout=3600'
+      - '--parallelism=1'
+      - '--max-retries=1'
+      - '--set-env-vars=GCP_PROJECT=$PROJECT_ID'
+
+images:
+  - 'gcr.io/$PROJECT_ID/cqc-data-processor'

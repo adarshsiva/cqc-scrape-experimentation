@@ -1,0 +1,11 @@
+steps:
+  # Build the training container
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/cqc-model-trainer', '-f', 'Dockerfile.train', '.']
+  
+  # Push the container
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/cqc-model-trainer']
+
+images:
+  - 'gcr.io/$PROJECT_ID/cqc-model-trainer'

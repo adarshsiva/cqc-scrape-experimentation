@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 import requests
 from google.cloud import storage
+from google.cloud import secretmanager
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from requests.adapters import HTTPAdapter
@@ -29,9 +30,16 @@ class DetailedCQCFetcher:
     def __init__(self, project_id: str, bucket_name: str):
         self.project_id = project_id
         self.bucket_name = bucket_name
-        self.base_url = "https://api.cqc.org.uk/public/v1"
+        self.base_url = "https://api.service.cqc.org.uk/public/v1"
         self.storage_client = storage.Client(project=project_id)
         self.bucket = self.storage_client.bucket(bucket_name)
+        
+        # Get API key from Secret Manager
+        self.api_key = self._get_api_key()
+        self.headers = {
+            "Ocp-Apim-Subscription-Key": self.api_key,
+            "User-Agent": "CQC-ML-Predictor/1.0"
+        }
         
         # Configure session with retry strategy
         self.session = requests.Session()
@@ -45,7 +53,19 @@ class DetailedCQCFetcher:
         self.session.mount("https://", adapter)
         
         # Rate limiting
-        self.rate_limit_delay = 0.1  # 100ms between requests
+        self.rate_limit_delay = 0.5  # 500ms between requests
+        
+    def _get_api_key(self) -> str:
+        """Retrieve API key from Secret Manager"""
+        client = secretmanager.SecretManagerServiceClient()
+        secret_name = f"projects/{self.project_id}/secrets/cqc-subscription-key/versions/latest"
+        
+        try:
+            response = client.access_secret_version(request={"name": secret_name})
+            return response.payload.data.decode("UTF-8").strip()
+        except Exception as e:
+            logger.error(f"Error retrieving API key: {e}")
+            raise
         
     def fetch_locations_with_ratings(self, limit: int = 1000) -> List[Dict]:
         """Fetch locations that have ratings data"""
@@ -57,18 +77,20 @@ class DetailedCQCFetcher:
                 url = f"{self.base_url}/locations"
                 params = {
                     'page': page,
-                    'perPage': 100,
-                    'hasRatings': 'true'  # Only get locations with ratings
+                    'perPage': 100
                 }
                 
-                response = self.session.get(url, params=params)
+                response = self.session.get(url, params=params, headers=self.headers)
                 response.raise_for_status()
                 
                 data = response.json()
                 if not data.get('locations'):
                     break
                     
-                locations.extend(data['locations'])
+                # Filter locations that have been inspected and have ratings
+                for loc in data['locations']:
+                    # We'll get detailed info later to check for ratings
+                    locations.append(loc)
                 logger.info(f"Fetched page {page}, total locations: {len(locations)}")
                 
                 page += 1
@@ -84,29 +106,31 @@ class DetailedCQCFetcher:
         """Fetch detailed information for a specific location"""
         try:
             url = f"{self.base_url}/locations/{location_id}"
-            response = self.session.get(url)
+            response = self.session.get(url, headers=self.headers)
             response.raise_for_status()
             
             location_data = response.json()
             
-            # Fetch additional details
-            # Ratings history
-            ratings_url = f"{url}/ratings"
-            ratings_response = self.session.get(ratings_url)
-            if ratings_response.status_code == 200:
-                location_data['ratingsHistory'] = ratings_response.json()
+            # Skip if no ratings
+            if not location_data.get('currentRatings', {}).get('overall'):
+                logger.info(f"Location {location_id} has no ratings, skipping")
+                return None
             
-            # Inspection areas
+            # Fetch additional details
+            # Inspection areas (this endpoint exists)
             areas_url = f"{url}/inspection-areas"
-            areas_response = self.session.get(areas_url)
+            areas_response = self.session.get(areas_url, headers=self.headers)
             if areas_response.status_code == 200:
                 location_data['inspectionAreas'] = areas_response.json()
             
-            # Reports
+            # Reports (if available)
             reports_url = f"{url}/reports"
-            reports_response = self.session.get(reports_url)
+            reports_response = self.session.get(reports_url, headers=self.headers)
             if reports_response.status_code == 200:
                 location_data['reports'] = reports_response.json()
+            
+            # Extract key features for ML
+            location_data['mlFeatures'] = self._extract_ml_features(location_data)
             
             time.sleep(self.rate_limit_delay)
             return location_data
@@ -224,14 +248,51 @@ class DetailedCQCFetcher:
                     summary['complianceStats']['unknown'] += 1
         
         return summary
+    
+    def _extract_ml_features(self, location: Dict) -> Dict:
+        """Extract key features for ML model training"""
+        features = {}
+        
+        # Basic info
+        features['locationId'] = location.get('locationId')
+        features['name'] = location.get('name')
+        features['type'] = location.get('type')
+        features['numberOfBeds'] = location.get('numberOfBeds', 0)
+        
+        # Registration info
+        features['registrationDate'] = location.get('registrationDate')
+        
+        # Current ratings
+        if 'currentRatings' in location:
+            ratings = location['currentRatings']
+            for domain in ['overall', 'safe', 'effective', 'caring', 'responsive', 'wellLed']:
+                if domain in ratings and ratings[domain]:
+                    features[f'{domain}Rating'] = ratings[domain].get('rating')
+                    features[f'{domain}RatingDate'] = ratings[domain].get('reportDate')
+        
+        # Last inspection
+        if 'lastInspection' in location:
+            features['lastInspectionDate'] = location['lastInspection'].get('date')
+        
+        # Services and activities
+        features['regulatedActivities'] = len(location.get('regulatedActivities', []))
+        features['specialisms'] = len(location.get('specialisms', []))
+        features['gacServiceTypes'] = len(location.get('gacServiceTypes', []))
+        
+        # Location
+        features['region'] = location.get('region', {}).get('name')
+        features['localAuthority'] = location.get('localAuthority')
+        features['postalCode'] = location.get('postalCode')
+        
+        return features
 
 
 def main():
     """Main execution function"""
     # Configuration
-    project_id = os.environ.get('GCP_PROJECT', 'your-project-id')
-    bucket_name = os.environ.get('GCS_BUCKET', 'cqc-data-raw')
-    max_locations = int(os.environ.get('MAX_LOCATIONS', '100'))
+    project_id = os.environ.get('GCP_PROJECT', 'machine-learning-exp-467008')
+    bucket_name = os.environ.get('GCS_BUCKET', 'machine-learning-exp-467008-cqc-raw-data')
+    max_locations = int(os.environ.get('MAX_LOCATIONS', '1000'))
     
     # Initialize fetcher
     fetcher = DetailedCQCFetcher(project_id, bucket_name)
