@@ -143,10 +143,20 @@ class CQCModelTrainer:
     def create_ensemble_predictor(self):
         """Create ensemble model"""
         def ensemble_predict(X):
+            if not self.models:
+                raise ValueError("No models available for ensemble prediction")
+                
             predictions = []
-            for model in self.models.values():
-                pred_proba = model.predict_proba(X)[:, 1]
-                predictions.append(pred_proba)
+            for model_name, model in self.models.items():
+                try:
+                    pred_proba = model.predict_proba(X)[:, 1]
+                    predictions.append(pred_proba)
+                except Exception as e:
+                    logger.warning(f"Model {model_name} failed during prediction: {str(e)}")
+                    continue
+            
+            if not predictions:
+                raise ValueError("All models failed during prediction")
             
             # Average predictions
             ensemble_proba = np.mean(predictions, axis=0)
@@ -154,26 +164,61 @@ class CQCModelTrainer:
             
         return ensemble_predict
         
+    def validate_model_package(self, model_package):
+        """Validate the model package before saving"""
+        required_keys = ['models', 'feature_columns', 'scaler', 'ensemble_predict', 'training_timestamp']
+        
+        for key in required_keys:
+            if key not in model_package:
+                raise ValueError(f"Missing required key in model package: {key}")
+        
+        if not model_package['models']:
+            raise ValueError("No models in model package")
+            
+        if not model_package['feature_columns']:
+            raise ValueError("No feature columns in model package")
+        
+        logger.info(f"Model package validation passed: {len(model_package['models'])} models, {len(model_package['feature_columns'])} features")
+        
     def save_models(self):
         """Save models to GCS"""
         logger.info("Saving models to GCS...")
         
-        model_package = {
-            'models': self.models,
-            'feature_columns': self.feature_columns,
-            'scaler': self.scaler,
-            'ensemble_predict': self.create_ensemble_predictor(),
-            'training_timestamp': datetime.now().isoformat()
-        }
-        
-        # Save to GCS
-        bucket = self.storage_client.bucket("machine-learning-exp-467008-cqc-ml-artifacts")
-        blob = bucket.blob("models/proactive/model_package.pkl")
-        
-        with blob.open('wb') as f:
-            pickle.dump(model_package, f)
+        # Validate that we have models to save
+        if not self.models:
+            logger.error("No models trained - cannot save model package")
+            raise ValueError("No models available to save")
             
-        logger.info("Models saved successfully")
+        # Validate required attributes exist
+        if not hasattr(self, 'feature_columns'):
+            logger.error("feature_columns not available - training may have failed")
+            raise ValueError("Feature columns not defined - training incomplete")
+        
+        try:
+            model_package = {
+                'models': self.models,
+                'feature_columns': self.feature_columns,
+                'scaler': self.scaler,
+                'ensemble_predict': self.create_ensemble_predictor(),
+                'training_timestamp': datetime.now().isoformat()
+            }
+            
+            # Validate model package before saving
+            self.validate_model_package(model_package)
+            
+            # Save to GCS
+            bucket = self.storage_client.bucket("machine-learning-exp-467008-cqc-ml-artifacts")
+            blob = bucket.blob("models/proactive/model_package.pkl")
+            
+            with blob.open('wb') as f:
+                pickle.dump(model_package, f)
+                
+            logger.info(f"Models saved successfully to GCS: {blob.name}")
+            logger.info(f"Saved {len(self.models)} models with {len(self.feature_columns)} features")
+            
+        except Exception as e:
+            logger.error(f"Failed to save models to GCS: {str(e)}")
+            raise
         
     def run_training_pipeline(self):
         """Main training pipeline"""
@@ -195,21 +240,42 @@ class CQCModelTrainer:
         logger.info(f"Training set: {len(X_train)}, Validation set: {len(X_val)}")
         
         # Train models
-        results = self.train_models(X_train, y_train, X_val, y_val)
-        
-        # Print results
-        print("\n=== MODEL TRAINING RESULTS ===")
-        for model_name, metrics in results.items():
-            print(f"\n{model_name.upper()}:")
-            print(f"  AUC Score: {metrics['auc_score']:.4f}")
-            print(f"  Accuracy: {metrics['report']['accuracy']:.4f}")
-            print(f"  At-Risk Precision: {metrics['report']['1']['precision']:.4f}")
-            print(f"  At-Risk Recall: {metrics['report']['1']['recall']:.4f}")
-        
-        # Save models
-        self.save_models()
-        
-        logger.info("Training completed successfully!")
+        try:
+            results = self.train_models(X_train, y_train, X_val, y_val)
+            
+            # Print results
+            print("\n=== MODEL TRAINING RESULTS ===")
+            for model_name, metrics in results.items():
+                print(f"\n{model_name.upper()}:")
+                print(f"  AUC Score: {metrics['auc_score']:.4f}")
+                print(f"  Accuracy: {metrics['report']['accuracy']:.4f}")
+                
+                # Safely access at-risk class metrics (class '1')
+                if '1' in metrics['report'] and isinstance(metrics['report']['1'], dict):
+                    print(f"  At-Risk Precision: {metrics['report']['1']['precision']:.4f}")
+                    print(f"  At-Risk Recall: {metrics['report']['1']['recall']:.4f}")
+                else:
+                    print("  At-Risk Precision: N/A (class not found in predictions)")
+                    print("  At-Risk Recall: N/A (class not found in predictions)")
+                    logger.warning(f"Class '1' not found in classification report for {model_name}")
+                    logger.warning(f"Available classes: {list(metrics['report'].keys())}")
+            
+            # Save models only if training succeeded
+            self.save_models()
+            
+            logger.info("Training completed successfully!")
+            
+        except Exception as e:
+            logger.error(f"Training failed: {str(e)}")
+            # Try to save any models that were successfully trained
+            if self.models:
+                logger.info("Attempting to save partially trained models...")
+                try:
+                    self.save_models()
+                    logger.info("Partially trained models saved successfully")
+                except Exception as save_e:
+                    logger.error(f"Failed to save partially trained models: {str(save_e)}")
+            raise
 
 def main():
     trainer = CQCModelTrainer()

@@ -1,0 +1,13 @@
+steps:
+  # Load JSON data from GCS to BigQuery
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'python3'
+    args: ['scripts/load_gcs_json_to_bigquery.py']
+    env:
+      - 'GCP_PROJECT=$PROJECT_ID'
+    id: 'load-gcs-json-to-bigquery'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  
+timeout: '1200s'  # 20 minutes

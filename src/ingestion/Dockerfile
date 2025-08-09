@@ -5,6 +5,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY app.py .
+# Copy all Python files
+COPY *.py .
 
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
+# For Cloud Run Job (batch processing)
+ENV PYTHONUNBUFFERED=1
+ENV GCP_PROJECT=machine-learning-exp-467008
+
+# Default to running the fetcher, but can be overridden
+CMD ["python", "cqc_fetcher_cloud.py"]

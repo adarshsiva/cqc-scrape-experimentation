@@ -1,0 +1,4 @@
+functions-framework==3.*
+requests==2.31.*
+google-cloud-secret-manager==2.16.*
+Flask==3.0.*
