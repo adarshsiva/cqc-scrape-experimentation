@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # Copy all Python files
-COPY *.py .
+COPY cqc_fetcher_cloud.py main.py app.py ./
 
 # For Cloud Run Job (batch processing)
 ENV PYTHONUNBUFFERED=1
