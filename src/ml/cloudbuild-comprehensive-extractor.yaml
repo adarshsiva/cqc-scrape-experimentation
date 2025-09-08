@@ -1,0 +1,56 @@
+# Cloud Build configuration for Comprehensive CQC Extractor
+# Deploy as Cloud Run Job for scalable data extraction
+
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-f', 'Dockerfile.comprehensive',
+      '-t', 'europe-west2-docker.pkg.dev/${PROJECT_ID}/cqc-ml/comprehensive-cqc-extractor:${BUILD_ID}',
+      '-t', 'europe-west2-docker.pkg.dev/${PROJECT_ID}/cqc-ml/comprehensive-cqc-extractor:latest',
+      '.'
+    ]
+    dir: 'src/ml'
+
+  # Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'push', 
+      'europe-west2-docker.pkg.dev/${PROJECT_ID}/cqc-ml/comprehensive-cqc-extractor:${BUILD_ID}'
+    ]
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'push', 
+      'europe-west2-docker.pkg.dev/${PROJECT_ID}/cqc-ml/comprehensive-cqc-extractor:latest'
+    ]
+
+  # Deploy/update the Cloud Run Job
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args: [
+      'run', 'jobs', 'replace', 'deploy-comprehensive-extractor.yaml',
+      '--region=europe-west2',
+      '--project=${PROJECT_ID}'
+    ]
+    dir: 'src/ml'
+
+# Substitutions for flexibility
+substitutions:
+  _REGION: 'europe-west2'
+  _SERVICE_NAME: 'cqc-comprehensive-extractor'
+
+# Options
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+# IAM permissions needed:
+# - Cloud Build Service Agent
+# - Artifact Registry Writer  
+# - Cloud Run Developer
+# - Service Account User (for the Cloud Run Job service account)
+
+# Timeout for the build (30 minutes)
+timeout: '1800s'

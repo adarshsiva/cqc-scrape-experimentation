@@ -1,0 +1,66 @@
+# Cloud Run Job configuration for Comprehensive CQC Extractor
+# This file defines the Cloud Run Job resource for deployment
+
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: cqc-comprehensive-extractor
+  namespace: '${PROJECT_ID}'
+  labels:
+    app: cqc-comprehensive-extractor
+    version: v1
+    environment: production
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+spec:
+  spec:
+    template:
+      spec:
+        template:
+          spec:
+            # Task configuration
+            taskCount: 1
+            parallelism: 1
+            taskTimeoutSeconds: 21600  # 6 hours
+            
+            # Container specification
+            containers:
+            - name: comprehensive-extractor
+              image: europe-west2-docker.pkg.dev/${PROJECT_ID}/cqc-ml/comprehensive-cqc-extractor:latest
+              
+              # Resource allocation
+              resources:
+                limits:
+                  cpu: '4'
+                  memory: '8Gi'
+                requests:
+                  cpu: '2'
+                  memory: '4Gi'
+              
+              # Environment variables (as per plan.md)
+              env:
+              - name: GCP_PROJECT
+                value: '${PROJECT_ID}'
+              - name: ENDPOINTS
+                value: 'locations,providers,inspection_areas,reports,assessment_groups'
+              - name: MAX_LOCATIONS
+                value: '50000'
+              - name: INCLUDE_HISTORICAL
+                value: 'true'
+              - name: FETCH_REPORTS
+                value: 'true'
+              - name: RATE_LIMIT
+                value: '1800'
+              - name: PARALLEL_WORKERS
+                value: '10'
+              - name: GOOGLE_CLOUD_PROJECT
+                value: '${PROJECT_ID}'
+              
+              # Startup and liveness probes (optional for jobs)
+              # Jobs typically don't need health checks as they run to completion
+              
+        # Job execution policy
+        restartPolicy: OnFailure
+        
+        # Service account with necessary permissions
+        serviceAccountName: cqc-extraction-sa@${PROJECT_ID}.iam.gserviceaccount.com

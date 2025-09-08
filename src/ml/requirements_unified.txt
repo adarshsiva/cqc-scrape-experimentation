@@ -1,0 +1,30 @@
+# Unified CQC Model Trainer Requirements
+# Core ML libraries
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+lightgbm>=4.0.0
+optuna>=3.4.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# Google Cloud Platform
+google-cloud-bigquery>=3.11.0
+google-cloud-storage>=2.10.0
+google-cloud-aiplatform>=1.38.0
+google-cloud-secret-manager>=2.16.0
+
+# Model interpretation and visualization
+shap>=0.42.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Utilities
+joblib>=1.3.0
+tqdm>=4.65.0
+python-dateutil>=2.8.0
+
+# Optional: Enhanced performance
+intel-extension-for-scikit-learn  # Intel optimization for sklearn

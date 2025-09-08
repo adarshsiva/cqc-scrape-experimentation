@@ -1,0 +1,56 @@
+# Cloud Build configuration for Unified CQC Model Trainer
+# This builds a custom container and deploys it as a Vertex AI training job
+
+steps:
+  # Build custom training container
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build', 
+      '-t', 'gcr.io/$PROJECT_ID/cqc-unified-trainer:$BUILD_ID',
+      '-f', 'src/ml/Dockerfile.unified',
+      '.'
+    ]
+    id: 'build-container'
+
+  # Push container to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/cqc-unified-trainer:$BUILD_ID']
+    id: 'push-container'
+    waitFor: ['build-container']
+
+  # Submit Vertex AI training job
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'python'
+    args: [
+      'src/ml/deploy_unified_trainer.py',
+      '--project-id', '$PROJECT_ID',
+      '--region', '${_REGION}',
+      '--machine-type', '${_MACHINE_TYPE}',
+      '${_TUNE_HYPERPARAMETERS}',
+      '${_DEPLOY_MODEL}'
+    ]
+    id: 'deploy-training'
+    waitFor: ['push-container']
+    env:
+      - 'CONTAINER_IMAGE=gcr.io/$PROJECT_ID/cqc-unified-trainer:$BUILD_ID'
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+# Timeout
+timeout: '3600s'  # 1 hour
+
+# Substitutions with defaults
+substitutions:
+  _REGION: 'europe-west2'
+  _MACHINE_TYPE: 'n1-highmem-4'
+  _TUNE_HYPERPARAMETERS: ''  # Empty = no tuning, '--tune-hyperparameters' = enable
+  _DEPLOY_MODEL: ''  # Empty = deploy, '--no-deploy' = skip deployment
+
+# IAM permissions needed:
+# - Cloud Build Service Agent
+# - Vertex AI User
+# - Storage Admin (for model artifacts)
+# - BigQuery User (for training data)

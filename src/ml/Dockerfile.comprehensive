@@ -1,0 +1,30 @@
+# Dockerfile for Comprehensive CQC Extractor Cloud Run Job
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements_comprehensive.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements_comprehensive.txt
+
+# Copy the extractor code
+COPY comprehensive_cqc_extractor.py .
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Make the script executable
+RUN chmod +x comprehensive_cqc_extractor.py
+
+# Run the extractor
+CMD ["python", "comprehensive_cqc_extractor.py"]
