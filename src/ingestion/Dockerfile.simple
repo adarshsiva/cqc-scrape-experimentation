@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements_fetcher.txt .
+RUN pip install --no-cache-dir -r requirements_fetcher.txt
+
+# Copy application
+COPY cqc_fetcher_complete.py .
+
+# Set environment
+ENV PYTHONUNBUFFERED=1
+
+# Run the fetcher
+CMD ["python", "cqc_fetcher_complete.py"]

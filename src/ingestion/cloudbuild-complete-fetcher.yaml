@@ -1,0 +1,51 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/cqc-complete-fetcher', '-f', 'Dockerfile.complete', '.']
+    dir: 'src/ingestion'
+
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/cqc-complete-fetcher']
+
+  # Deploy to Cloud Run Job with enhanced configuration
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        # Check if job exists and create or update accordingly
+        if gcloud run jobs describe cqc-complete-fetcher --region=europe-west2 --project=$PROJECT_ID 2>/dev/null; then
+          echo "Job exists, updating..."
+          gcloud run jobs update cqc-complete-fetcher \
+            --image=gcr.io/$PROJECT_ID/cqc-complete-fetcher \
+            --region=europe-west2 \
+            --task-timeout=86400 \
+            --max-retries=1 \
+            --parallelism=1 \
+            --memory=8Gi \
+            --cpu=4 \
+            --service-account=cqc-fetcher@$PROJECT_ID.iam.gserviceaccount.com \
+            --set-env-vars=BATCH_SIZE=500,RESUME=true,GCP_PROJECT=$PROJECT_ID \
+            --set-secrets=CQC_API_KEY=cqc-subscription-key:latest
+        else
+          echo "Job doesn't exist, creating..."
+          gcloud run jobs create cqc-complete-fetcher \
+            --image=gcr.io/$PROJECT_ID/cqc-complete-fetcher \
+            --region=europe-west2 \
+            --task-timeout=86400 \
+            --max-retries=1 \
+            --parallelism=1 \
+            --memory=8Gi \
+            --cpu=4 \
+            --service-account=cqc-fetcher@$PROJECT_ID.iam.gserviceaccount.com \
+            --set-env-vars=BATCH_SIZE=500,RESUME=true,GCP_PROJECT=$PROJECT_ID \
+            --set-secrets=CQC_API_KEY=cqc-subscription-key:latest
+        fi
+
+# Build configuration options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  
+timeout: 1800s

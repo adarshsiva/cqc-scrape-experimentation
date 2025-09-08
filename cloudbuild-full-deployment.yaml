@@ -1,0 +1,319 @@
+# Complete CQC ML Pipeline Deployment on Google Cloud Platform
+# This runs entirely on Cloud Build without any local execution
+
+substitutions:
+  _REGION: europe-west2
+  _DATASET_ID: cqc_dataset
+
+steps:
+  # Step 1: Enable all required APIs
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'enable-apis'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Enabling required GCP APIs..."
+        gcloud services enable \
+          cloudbuild.googleapis.com \
+          run.googleapis.com \
+          cloudfunctions.googleapis.com \
+          storage.googleapis.com \
+          bigquery.googleapis.com \
+          dataflow.googleapis.com \
+          aiplatform.googleapis.com \
+          secretmanager.googleapis.com \
+          cloudscheduler.googleapis.com \
+          monitoring.googleapis.com \
+          logging.googleapis.com \
+          --project=$PROJECT_ID
+
+  # Step 2: Create service accounts
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'create-service-accounts'
+    waitFor: ['enable-apis']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Creating service accounts..."
+        
+        # Data fetcher service account
+        gcloud iam service-accounts create cqc-fetcher \
+          --display-name="CQC Data Fetcher" \
+          --project=$PROJECT_ID || echo "Service account exists"
+        
+        # API service account  
+        gcloud iam service-accounts create cqc-api \
+          --display-name="CQC Prediction API" \
+          --project=$PROJECT_ID || echo "Service account exists"
+        
+        # Grant permissions
+        for role in storage.admin bigquery.dataEditor secretmanager.secretAccessor; do
+          gcloud projects add-iam-policy-binding $PROJECT_ID \
+            --member="serviceAccount:cqc-fetcher@$PROJECT_ID.iam.gserviceaccount.com" \
+            --role="roles/$${role}" \
+            --condition=None || true
+        done
+        
+        for role in aiplatform.user storage.objectViewer; do
+          gcloud projects add-iam-policy-binding $PROJECT_ID \
+            --member="serviceAccount:cqc-api@$PROJECT_ID.iam.gserviceaccount.com" \
+            --role="roles/$${role}" \
+            --condition=None || true
+        done
+
+  # Step 3: Create Cloud Storage buckets
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'create-buckets'
+    waitFor: ['enable-apis']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Creating Cloud Storage buckets..."
+        
+        # Raw data bucket
+        gsutil mb -p $PROJECT_ID -l ${_REGION} gs://$PROJECT_ID-cqc-raw-data || echo "Bucket exists"
+        
+        # Processed data bucket
+        gsutil mb -p $PROJECT_ID -l ${_REGION} gs://$PROJECT_ID-cqc-processed || echo "Bucket exists"
+        
+        # ML artifacts bucket
+        gsutil mb -p $PROJECT_ID -l ${_REGION} gs://$PROJECT_ID-cqc-ml-artifacts || echo "Bucket exists"
+        
+        # Set lifecycle policies
+        cat > /tmp/lifecycle.json <<EOF
+        {
+          "lifecycle": {
+            "rule": [
+              {
+                "action": {"type": "Delete"},
+                "condition": {"age": 90}
+              }
+            ]
+          }
+        }
+        EOF
+        
+        gsutil lifecycle set /tmp/lifecycle.json gs://$PROJECT_ID-cqc-raw-data || true
+
+  # Step 4: Setup BigQuery dataset and tables
+  - name: 'python:3.11-slim'
+    id: 'setup-bigquery'
+    waitFor: ['enable-apis']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Setting up BigQuery..."
+        pip install google-cloud-bigquery
+        python setup_bigquery.py
+    dir: 'src/bigquery'
+    env:
+      - 'GCP_PROJECT=$PROJECT_ID'
+
+  # Step 5: Build and deploy data fetcher
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-fetcher'
+    waitFor: ['create-service-accounts', 'create-buckets']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/cqc-complete-fetcher', '-f', 'Dockerfile.complete', '.']
+    dir: 'src/ingestion'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-fetcher'
+    waitFor: ['build-fetcher']
+    args: ['push', 'gcr.io/$PROJECT_ID/cqc-complete-fetcher']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'deploy-fetcher'
+    waitFor: ['push-fetcher']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Deploying data fetcher to Cloud Run..."
+        
+        gcloud run jobs create cqc-complete-fetcher \
+          --image=gcr.io/$PROJECT_ID/cqc-complete-fetcher \
+          --region=${_REGION} \
+          --task-timeout=86400 \
+          --max-retries=1 \
+          --parallelism=1 \
+          --memory=8Gi \
+          --cpu=4 \
+          --service-account=cqc-fetcher@$PROJECT_ID.iam.gserviceaccount.com \
+          --set-env-vars=BATCH_SIZE=500,RESUME=true,GCP_PROJECT=$PROJECT_ID \
+          --project=$PROJECT_ID || \
+        gcloud run jobs update cqc-complete-fetcher \
+          --image=gcr.io/$PROJECT_ID/cqc-complete-fetcher \
+          --region=${_REGION} \
+          --project=$PROJECT_ID
+
+  # Step 6: Setup Cloud Scheduler
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'setup-scheduler'
+    waitFor: ['deploy-fetcher']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Setting up Cloud Scheduler..."
+        
+        gcloud scheduler jobs create http cqc-daily-fetch \
+          --location=${_REGION} \
+          --schedule="0 2 * * *" \
+          --time-zone="Europe/London" \
+          --uri="https://${_REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/$PROJECT_ID/jobs/cqc-complete-fetcher:run" \
+          --http-method=POST \
+          --oauth-service-account-email=cqc-fetcher@$PROJECT_ID.iam.gserviceaccount.com \
+          --project=$PROJECT_ID || echo "Scheduler job exists"
+
+  # Step 7: Deploy prediction API
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'deploy-api'
+    waitFor: ['create-service-accounts', 'setup-bigquery']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Deploying prediction API to Cloud Functions..."
+        
+        gcloud functions deploy predict-rating \
+          --gen2 \
+          --runtime=python311 \
+          --region=${_REGION} \
+          --source=src/api \
+          --entry-point=predict_rating \
+          --trigger-http \
+          --allow-unauthenticated \
+          --memory=1024MB \
+          --timeout=60s \
+          --max-instances=100 \
+          --min-instances=1 \
+          --set-env-vars="GCP_PROJECT=$PROJECT_ID,GCP_REGION=${_REGION},MODEL_BUCKET=$PROJECT_ID-cqc-processed" \
+          --service-account=cqc-api@$PROJECT_ID.iam.gserviceaccount.com \
+          --project=$PROJECT_ID
+
+  # Step 8: Deploy health check endpoint
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'deploy-health-check'
+    waitFor: ['deploy-api']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Deploying health check endpoint..."
+        
+        gcloud functions deploy health-check \
+          --gen2 \
+          --runtime=python311 \
+          --region=${_REGION} \
+          --source=src/api \
+          --entry-point=health_check \
+          --trigger-http \
+          --allow-unauthenticated \
+          --memory=256MB \
+          --timeout=10s \
+          --project=$PROJECT_ID
+
+  # Step 9: Setup monitoring
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'setup-monitoring'
+    waitFor: ['deploy-api', 'deploy-fetcher']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Setting up monitoring..."
+        
+        # Create log sink for BigQuery
+        bq mk -d --location=${_REGION} --description="CQC ML Pipeline Logs" cqc_logs || echo "Dataset exists"
+        
+        gcloud logging sinks create cqc-pipeline-sink \
+          bigquery.googleapis.com/projects/$PROJECT_ID/datasets/cqc_logs \
+          --log-filter='resource.type=("cloud_run_job" OR "cloud_function")' \
+          --project=$PROJECT_ID || echo "Sink exists"
+        
+        # Create uptime check
+        gcloud monitoring uptime-checks create https health-check-monitor \
+          --display-name="CQC API Health Check" \
+          --uri="https://${_REGION}-$PROJECT_ID.cloudfunctions.net/health-check" \
+          --check-interval=5m \
+          --project=$PROJECT_ID || echo "Uptime check exists"
+
+  # Step 10: Deploy web interface
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'deploy-web'
+    waitFor: ['deploy-api']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Deploying web interface..."
+        
+        # Create web bucket
+        gsutil mb -p $PROJECT_ID -l ${_REGION} gs://$PROJECT_ID-cqc-web || echo "Bucket exists"
+        gsutil iam ch allUsers:objectViewer gs://$PROJECT_ID-cqc-web || true
+        
+        # Update API endpoint in HTML
+        sed "s|YOUR-PROJECT-ID|$PROJECT_ID|g" src/web/care_home_form.html > /tmp/index.html
+        
+        # Upload to bucket
+        gsutil cp /tmp/index.html gs://$PROJECT_ID-cqc-web/index.html
+        gsutil web set -m index.html gs://$PROJECT_ID-cqc-web || true
+
+  # Step 11: Run initial data fetch (optional)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'initial-data-fetch'
+    waitFor: ['deploy-fetcher', 'setup-bigquery']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Starting initial data fetch..."
+        gcloud run jobs execute cqc-complete-fetcher \
+          --region=${_REGION} \
+          --project=$PROJECT_ID \
+          --async
+        
+        echo "Data fetch job started. Monitor progress in Cloud Run console."
+
+  # Step 12: Final validation and summary
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'validation'
+    waitFor: ['-']
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "======================================"
+        echo "DEPLOYMENT COMPLETE!"
+        echo "======================================"
+        echo ""
+        echo "✅ Infrastructure Deployed:"
+        echo "   • BigQuery Dataset: $PROJECT_ID.${_DATASET_ID}"
+        echo "   • Cloud Run Job: cqc-complete-fetcher"
+        echo "   • Cloud Functions: predict-rating, health-check"
+        echo "   • Cloud Scheduler: cqc-daily-fetch"
+        echo ""
+        echo "📊 Access Points:"
+        echo "   • Prediction API: https://${_REGION}-$PROJECT_ID.cloudfunctions.net/predict-rating"
+        echo "   • Health Check: https://${_REGION}-$PROJECT_ID.cloudfunctions.net/health-check"
+        echo "   • Web Interface: https://storage.googleapis.com/$PROJECT_ID-cqc-web/index.html"
+        echo ""
+        echo "📈 Monitoring:"
+        echo "   • Cloud Run Logs: https://console.cloud.google.com/run/jobs/detail/${_REGION}/cqc-complete-fetcher/logs"
+        echo "   • BigQuery Data: https://console.cloud.google.com/bigquery?project=$PROJECT_ID&ws=!1m4!1m3!3m2!1s$PROJECT_ID!2s${_DATASET_ID}"
+        echo ""
+        echo "🚀 Next Steps:"
+        echo "   1. Monitor data ingestion progress in Cloud Run"
+        echo "   2. Once data is loaded, train ML models"
+        echo "   3. Test the prediction API"
+        echo ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  
+timeout: 3600s

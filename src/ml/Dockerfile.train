@@ -2,28 +2,45 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for LightGBM
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
+    git \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-RUN pip install --no-cache-dir \
-    google-cloud-bigquery==3.11.4 \
-    google-cloud-storage==2.10.0 \
-    db-dtypes==1.1.1 \
-    pandas==2.0.3 \
-    numpy==1.24.3 \
-    scikit-learn==1.3.0 \
-    xgboost==1.7.6 \
-    lightgbm==4.0.0
+# Copy requirements first for better caching
+COPY requirements.txt .
 
-# Copy training script
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy all ML scripts and utilities
+COPY feature_engineering.py .
+COPY xgboost_model.py .
+COPY random_forest_model.py .
+COPY vertex_ai_pipeline.py .
 COPY train_model_cloud.py .
+COPY simple_trainer.py .
+COPY features.py .
+
+# Copy pipeline components
+COPY pipeline/ ./pipeline/
+
+# Copy serving components
+COPY serving/ ./serving/
+
+# Copy trainer module
+COPY trainer/ ./trainer/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app:$PYTHONPATH
 
-# Run training
-CMD ["python", "train_model_cloud.py"]
+# Create directories for artifacts
+RUN mkdir -p /tmp/plots /tmp/models /tmp/artifacts
+
+# Default command (can be overridden)
+CMD ["python", "xgboost_model.py"]

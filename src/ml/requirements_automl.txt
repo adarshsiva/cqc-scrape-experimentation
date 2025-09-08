@@ -1,0 +1,170 @@
+# Requirements file for Vertex AI AutoML training
+# Python dependencies for CQC AutoML model training and deployment
+
+# Core Google Cloud AI Platform libraries
+google-cloud-aiplatform==1.60.0
+google-cloud-bigquery==3.25.0
+google-cloud-storage==2.16.0
+google-cloud-secret-manager==2.20.0
+
+# Core data processing libraries
+pandas==2.2.2
+numpy==1.26.4
+scipy==1.13.1
+
+# Configuration and utilities
+PyYAML==6.0.2
+python-dotenv==1.0.1
+
+# Logging and monitoring
+google-cloud-logging==3.10.0
+structlog==24.2.0
+
+# HTTP and API utilities
+requests==2.32.3
+urllib3==2.2.2
+
+# Date and time utilities
+python-dateutil==2.9.0
+pytz==2024.1
+
+# Data validation and schema
+jsonschema==4.22.0
+marshmallow==3.21.3
+
+# Machine learning utilities (for feature analysis)
+scikit-learn==1.5.1
+joblib==1.4.2
+
+# Visualization (for feature importance plots)
+matplotlib==3.9.1
+seaborn==0.13.2
+plotly==5.22.0
+
+# Statistical analysis
+statsmodels==0.14.2
+
+# Progress bars and CLI utilities  
+tqdm==4.66.4
+click==8.1.7
+rich==13.7.1
+
+# Authentication
+google-auth==2.30.0
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+
+# Protocol buffers (required for AI Platform)
+protobuf==4.25.4
+grpcio==1.65.1
+grpcio-status==1.65.1
+
+# Async support
+asyncio-mqtt==0.16.2
+aiohttp==3.10.2
+
+# Data type utilities
+typing-extensions==4.12.2
+pydantic==2.8.2
+
+# Testing dependencies (for development)
+pytest==8.2.2
+pytest-asyncio==0.23.7
+pytest-mock==3.14.0
+
+# Code quality
+black==24.4.2
+flake8==7.1.0
+mypy==1.10.1
+
+# Security
+cryptography==43.0.0
+certifi==2024.7.4
+
+# Memory profiling
+memory-profiler==0.61.0
+psutil==6.0.0
+
+# Configuration management
+omegaconf==2.3.0
+hydra-core==1.3.2
+
+# Experiment tracking
+mlflow==2.14.3
+wandb==0.17.5
+
+# Model interpretability
+shap==0.46.0
+lime==0.2.0.1
+
+# Feature engineering utilities
+category-encoders==2.6.3
+feature-engine==1.8.0
+
+# Time series utilities (if needed for temporal features)
+tslearn==0.6.3
+
+# Database connectivity (for additional data sources)
+sqlalchemy==2.0.31
+pymongo==4.8.0
+
+# Caching
+redis==5.0.7
+diskcache==5.6.3
+
+# Parallel processing
+dask[complete]==2024.7.1
+multiprocessing-logging==0.3.4
+
+# Text processing (for advanced NLP features)
+nltk==3.8.1
+spacy==3.7.5
+transformers==4.42.4
+
+# Image processing (if needed for document analysis)
+Pillow==10.4.0
+opencv-python==4.10.0.84
+
+# Export and serialization
+pickle-mixin==1.0.2
+dill==0.3.8
+
+# Web scraping utilities (for additional data collection)
+beautifulsoup4==4.12.3
+lxml==5.2.2
+
+# Geographic utilities (for location-based features)
+geopy==2.4.1
+geopandas==1.0.1
+
+# Financial and business utilities
+openpyxl==3.1.5
+xlrd==2.0.1
+
+# API development (for model serving)
+fastapi==0.111.1
+uvicorn==0.30.1
+pydantic-settings==2.3.4
+
+# Model validation
+evidently==0.4.25
+great-expectations==0.18.16
+
+# Deployment utilities
+docker==7.1.0
+kubernetes==30.1.0
+
+# Version pinning for stability
+# Core dependencies are pinned to specific versions to ensure reproducibility
+# Development dependencies can be more flexible
+
+# Note: Some packages may have additional system dependencies
+# For Ubuntu/Debian systems, you may need:
+# apt-get update && apt-get install -y \
+#     build-essential \
+#     python3-dev \
+#     libffi-dev \
+#     libssl-dev \
+#     libxml2-dev \
+#     libxslt1-dev \
+#     zlib1g-dev

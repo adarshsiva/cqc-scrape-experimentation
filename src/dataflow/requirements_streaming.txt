@@ -1,0 +1,104 @@
+# Requirements for CQC Streaming Feature Pipeline
+# Python dependencies for Apache Beam streaming pipeline
+
+# Core Apache Beam and Google Cloud dependencies
+apache-beam[gcp]==2.53.0
+google-cloud-storage==2.13.0
+google-cloud-bigquery==3.13.0
+google-cloud-pubsub==2.18.4
+google-cloud-aiplatform==1.36.4
+google-cloud-bigtable==2.21.0
+google-cloud-monitoring==2.16.0
+google-cloud-logging==3.8.0
+
+# Data processing and analysis
+pandas==2.1.4
+numpy==1.24.4
+pyarrow==14.0.1
+
+# Date and time handling
+python-dateutil==2.8.2
+pytz==2023.3
+
+# JSON processing (faster than standard json)
+orjson==3.9.10
+
+# HTTP requests and networking
+requests==2.31.0
+urllib3==2.1.0
+
+# Data validation and schema
+jsonschema==4.20.0
+marshmallow==3.20.1
+
+# Async processing support
+asyncio-mqtt==0.13.0
+aiohttp==3.8.6
+
+# Monitoring and observability
+opencensus-ext-stackdriver==0.8.0
+prometheus-client==0.19.0
+
+# Development and testing dependencies
+pytest==7.4.3
+pytest-cov==4.1.0
+mock==5.1.0
+freezegun==1.2.2
+
+# Utilities
+click==8.1.7
+pyyaml==6.0.1
+python-dotenv==1.0.0
+typing-extensions==4.8.0
+
+# Security
+cryptography==41.0.7
+certifi==2023.11.17
+
+# Performance optimizations
+cython==3.0.6
+lz4==4.3.2
+snappy==0.6.1
+
+# Additional Apache Beam extensions
+apache-beam[aws]==2.53.0
+apache-beam[azure]==2.53.0
+apache-beam[dataframe]==2.53.0
+apache-beam[interactive]==2.53.0
+
+# Google Cloud ML and AI
+google-cloud-automl==2.11.4
+google-cloud-translate==3.12.1
+google-cloud-language==2.12.0
+
+# Stream processing utilities
+kafka-python==2.0.2
+confluent-kafka==2.3.0
+
+# Feature store integrations
+feast==0.32.0
+redis==5.0.1
+
+# Workflow and pipeline utilities
+apache-airflow-providers-google==10.10.1
+kfp==2.4.0
+
+# Documentation and development
+sphinx==7.2.6
+black==23.11.0
+flake8==6.1.0
+isort==5.12.0
+mypy==1.7.1
+
+# Production deployment
+gunicorn==21.2.0
+uwsgi==2.0.23
+
+# Environment and configuration
+python-decouple==3.8
+configparser==6.0.0
+
+# Backup and fallback versions for compatibility
+setuptools>=65.0.0
+wheel>=0.42.0
+pip>=23.0.0

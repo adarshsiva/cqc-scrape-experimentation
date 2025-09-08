@@ -1,0 +1,70 @@
+steps:
+  # Deploy the Cloud Function
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'functions'
+      - 'deploy'
+      - 'dashboard-metrics-collector'
+      - '--source=.'
+      - '--entry-point=collect_dashboard_metrics'
+      - '--runtime=python311'
+      - '--trigger=http'
+      - '--allow-unauthenticated'
+      - '--region=europe-west2'
+      - '--project=machine-learning-exp-467008'
+      - '--memory=512MB'
+      - '--timeout=300s'
+      - '--max-instances=10'
+      - '--set-env-vars=PROJECT_ID=machine-learning-exp-467008,REGION=europe-west2'
+    dir: 'src/functions/dashboard_collector'
+
+  # Create Pub/Sub topic if it doesn't exist
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud pubsub topics create dashboard-events --project=machine-learning-exp-467008 || echo "Topic already exists"
+        
+  # Set IAM permissions for the function
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Grant the Cloud Function service account necessary permissions
+        gcloud projects add-iam-policy-binding machine-learning-exp-467008 \
+          --member="serviceAccount:machine-learning-exp-467008@appspot.gserviceaccount.com" \
+          --role="roles/pubsub.publisher"
+        
+        gcloud projects add-iam-policy-binding machine-learning-exp-467008 \
+          --member="serviceAccount:machine-learning-exp-467008@appspot.gserviceaccount.com" \
+          --role="roles/bigquery.dataEditor"
+        
+        gcloud projects add-iam-policy-binding machine-learning-exp-467008 \
+          --member="serviceAccount:machine-learning-exp-467008@appspot.gserviceaccount.com" \
+          --role="roles/aiplatform.user"
+        
+        gcloud projects add-iam-policy-binding machine-learning-exp-467008 \
+          --member="serviceAccount:machine-learning-exp-467008@appspot.gserviceaccount.com" \
+          --role="roles/secretmanager.secretAccessor"
+
+  # Create BigQuery table for dashboard metrics if it doesn't exist
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        bq mk --dataset --location=europe-west2 machine-learning-exp-467008:cqc_data || echo "Dataset already exists"
+        
+        bq mk --table \
+          machine-learning-exp-467008:cqc_data.dashboard_metrics \
+          metric_type:STRING,provider_id:STRING,location_id:STRING,collection_timestamp:TIMESTAMP,raw_metrics:JSON,derived_metrics:JSON \
+          || echo "Table already exists"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: '1200s'

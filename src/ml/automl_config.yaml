@@ -1,0 +1,247 @@
+# Vertex AI AutoML Configuration for CQC Rating Prediction
+# This file contains configuration parameters for training AutoML Tables models
+
+# Project Configuration
+project:
+  id: "machine-learning-exp-467008"
+  region: "europe-west2"
+  
+# BigQuery Configuration  
+bigquery:
+  dataset: "cqc_dataset"
+  table: "ml_features_comprehensive"
+  full_table_id: "cqc_dataset.ml_features_comprehensive"
+
+# AutoML Training Configuration
+automl:
+  # Model Configuration
+  model:
+    display_name_prefix: "cqc-automl-rating-predictor"
+    target_column: "overall_rating"
+    model_type: "classification"
+    
+  # Training Configuration
+  training:
+    budget_milli_node_hours: 10000  # 10 node hours
+    optimization_objective: "maximize-precision-at-recall"
+    optimization_objective_recall_value: 0.8  # Precision at 80% recall
+    
+    # Early stopping configuration
+    enable_early_stopping: true
+    
+    # Data split configuration (AutoML handles automatically, but can specify preferences)
+    train_fraction: 0.8
+    validation_fraction: 0.1
+    test_fraction: 0.1
+    
+  # Dataset Configuration
+  dataset:
+    display_name_prefix: "cqc-comprehensive-features"
+    
+  # Feature Configuration
+  features:
+    # Categorical features - these will be automatically one-hot encoded by AutoML
+    categorical:
+      - "provider_type"
+      - "service_type" 
+      - "location_status"
+      - "region"
+      - "local_authority"
+      - "constituency"
+      - "postcode_district"
+      
+    # Numerical features - these will be automatically normalized by AutoML
+    numerical:
+      - "registration_age_years"
+      - "days_since_last_inspection"
+      - "months_since_last_inspection"
+      - "num_regulated_activities"
+      - "num_inspection_areas"
+      - "regional_good_rating_rate"
+      - "provider_historical_rating_avg"
+      - "inspection_areas_complexity_score"
+      - "regulated_activities_complexity_score"
+      - "region_avg_inspection_frequency"
+      - "region_provider_count"
+      - "region_location_count"
+      - "provider_location_count"
+      - "provider_service_type_diversity"
+      - "provider_avg_rating"
+      - "location_type_risk_score"
+      
+    # Binary/Boolean features
+    binary:
+      - "is_residential_service"
+      - "is_community_service"
+      - "is_hospital_service" 
+      - "is_primary_service"
+      - "high_risk_service_flag"
+      - "inspection_overdue_flag"
+      - "new_registration_flag"
+      - "is_winter_inspection"
+      - "is_summer_inspection"
+      - "is_holiday_period_inspection"
+      
+    # Temporal features
+    temporal:
+      - "inspection_month"
+      - "inspection_quarter"
+      - "inspection_day_of_week"
+      
+    # Text-derived features (TF-IDF embeddings)
+    text_embeddings:
+      - "inspection_areas_tfidf_0"
+      - "inspection_areas_tfidf_1"
+      - "inspection_areas_tfidf_2"
+      - "regulated_activities_tfidf_0"
+      - "regulated_activities_tfidf_1"
+      - "regulated_activities_tfidf_2"
+      
+    # Features to exclude from training (IDs and raw text)
+    exclude:
+      - "provider_id"
+      - "location_id"
+      - "inspection_date"
+      - "registration_date"
+      - "raw_inspection_areas"
+      - "raw_regulated_activities"
+      
+# Deployment Configuration
+deployment:
+  # Endpoint configuration
+  endpoint:
+    display_name_prefix: "cqc-automl-endpoint"
+    machine_type: "n1-standard-2"
+    min_replica_count: 1
+    max_replica_count: 3
+    
+    # Auto-scaling configuration
+    scaling:
+      max_concurrent_requests_per_replica: 100
+      cpu_utilization_target: 70
+      
+  # Prediction configuration
+  prediction:
+    # Confidence threshold for predictions
+    confidence_threshold: 0.7
+    
+    # Explanation configuration
+    enable_explanations: true
+    explanation_method: "sampled-shapley"
+    
+# Monitoring Configuration
+monitoring:
+  # Model performance monitoring
+  enable_monitoring: true
+  
+  # Drift detection
+  drift_detection:
+    enable: true
+    threshold: 0.05
+    
+  # Alerting thresholds
+  alerts:
+    accuracy_threshold: 0.75
+    precision_threshold: 0.70
+    recall_threshold: 0.65
+    
+# Evaluation Configuration  
+evaluation:
+  # Metrics to track
+  primary_metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1_score"
+    - "roc_auc"
+    
+  # Class-specific metrics (for multi-class classification)
+  per_class_metrics: true
+  
+  # Confusion matrix generation
+  generate_confusion_matrix: true
+  
+  # Feature importance export
+  export_feature_importance: true
+  feature_importance_top_k: 30
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  
+  # Cloud Logging configuration
+  cloud_logging:
+    enable: true
+    log_name: "cqc-automl-training"
+    
+# Resource Configuration
+resources:
+  # Training resources
+  training:
+    # AutoML manages resources automatically, but we can set preferences
+    accelerator_type: null  # Let AutoML decide
+    accelerator_count: 0
+    
+  # Serving resources  
+  serving:
+    cpu_limit: "2000m"
+    memory_limit: "4Gi"
+    
+# Experiment Configuration
+experiment:
+  # Experiment tracking
+  enable_experiments: true
+  experiment_name: "cqc-automl-experiments"
+  
+  # Hyperparameter tuning (limited in AutoML, but can specify preferences)
+  hyperparameters:
+    # AutoML will handle hyperparameter optimization automatically
+    optimization_goal: "maximize_precision_at_recall"
+    
+# Security Configuration
+security:
+  # IAM configuration
+  service_account: null  # Use default service account
+  
+  # Encryption
+  encryption:
+    enable_encryption_at_rest: true
+    kms_key_name: null  # Use Google-managed keys
+    
+# Cost Management
+cost_management:
+  # Budget alerts
+  budget_alert_threshold: 8000  # Alert at 80% of budget
+  
+  # Auto-termination
+  max_training_time_hours: 24
+  
+  # Cost optimization
+  enable_cost_optimization: true
+  
+# Data Quality Configuration
+data_quality:
+  # Data validation
+  enable_validation: true
+  
+  # Missing value handling
+  missing_value_strategy: "auto"  # Let AutoML decide
+  
+  # Outlier detection
+  outlier_detection:
+    enable: true
+    method: "auto"
+    
+# Export Configuration
+export:
+  # Model export formats
+  formats:
+    - "saved_model"  # TensorFlow SavedModel
+    - "tflite"       # TensorFlow Lite (for edge deployment)
+    
+  # Export location
+  export_bucket: null  # Will use default project bucket
+  
+  # Metadata export
+  export_metadata: true
+  metadata_format: "json"

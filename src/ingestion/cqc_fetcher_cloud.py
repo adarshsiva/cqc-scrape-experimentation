@@ -23,35 +23,55 @@ logger = logging.getLogger(__name__)
 
 class CloudCQCFetcher:
     def __init__(self):
+        logger.info("🚀 Initializing CloudCQCFetcher...")
         self.project_id = os.environ.get('GCP_PROJECT', 'machine-learning-exp-467008')
+        logger.info(f"📋 Project ID: {self.project_id}")
+        
         self.api_key = self._get_api_key()
         self.base_url = "https://api.service.cqc.org.uk/public/v1"
+        logger.info(f"📋 Base URL: {self.base_url}")
+        
+        if not self.api_key:
+            raise ValueError("❌ No API key available - cannot initialize fetcher")
         
         # Initialize clients
+        logger.info("🔧 Initializing GCP clients...")
         self.storage_client = storage.Client(project=self.project_id)
         self.bigquery_client = bigquery.Client(project=self.project_id)
-        self.bucket = self.storage_client.bucket("machine-learning-exp-467008-cqc-raw-data")
+        
+        try:
+            self.bucket = self.storage_client.bucket("machine-learning-exp-467008-cqc-raw-data")
+            logger.info(f"✅ Connected to bucket: {self.bucket.name}")
+        except Exception as e:
+            logger.error(f"❌ Failed to connect to bucket: {e}")
+            raise
         
         # Setup session with retry strategy
+        logger.info("🔧 Setting up HTTP session...")
         self.session = self._create_session()
+        logger.info("✅ CloudCQCFetcher initialized successfully")
         
     def _get_api_key(self) -> str:
         """Get API key from Secret Manager or environment."""
         try:
             client = secretmanager.SecretManagerServiceClient()
             name = f"projects/{self.project_id}/secrets/cqc-subscription-key/versions/latest"
+            logger.info(f"Attempting to retrieve API key from Secret Manager: {name}")
             response = client.access_secret_version(request={"name": name})
             key = response.payload.data.decode("UTF-8")
-            logger.info("API key retrieved from Secret Manager")
+            logger.info(f"✅ API key retrieved from Secret Manager (length: {len(key)})")
+            logger.info(f"API key preview: {key[:10]}...{key[-4:]}")
             return key
         except Exception as e:
-            logger.warning(f"Failed to get key from Secret Manager: {e}")
+            logger.error(f"❌ Failed to get key from Secret Manager: {e}")
+            logger.error(f"Project ID: {self.project_id}")
             # Fallback to environment variable
             key = os.environ.get('CQC_API_KEY', '')
             if key:
-                logger.info("API key retrieved from environment variable")
+                logger.info(f"✅ API key retrieved from environment variable (length: {len(key)})")
+                logger.info(f"API key preview: {key[:10]}...{key[-4:]}")
             else:
-                logger.error("No API key found in Secret Manager or environment")
+                logger.error("❌ No API key found in Secret Manager or environment")
             return key
     
     def _create_session(self) -> requests.Session:
@@ -71,22 +91,21 @@ class CloudCQCFetcher:
         session.mount("http://", adapter)
         session.mount("https://", adapter)
         
-        # Set headers that might help bypass 403 errors
-        session.headers.update({
+        # Start with minimal headers like a working Cloud Function
+        headers = {
             "Ocp-Apim-Subscription-Key": self.api_key,
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json",
-            "Accept-Language": "en-GB,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Cache-Control": "no-cache",
-            "Pragma": "no-cache",
-            "Referer": "https://www.cqc.org.uk/",
-            "Origin": "https://www.cqc.org.uk",
-            "Connection": "keep-alive",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site"
-        })
+            "User-Agent": "Google-Cloud-Functions/2.0 Python/3.11"
+        }
+        
+        logger.info("Setting session headers:")
+        for key, value in headers.items():
+            if key == "Ocp-Apim-Subscription-Key":
+                logger.info(f"  {key}: {value[:10]}...{value[-4:] if len(value) > 14 else value}")
+            else:
+                logger.info(f"  {key}: {value}")
+        
+        session.headers.update(headers)
         
         return session
     
@@ -102,12 +121,70 @@ class CloudCQCFetcher:
                 logger.info(f"Waiting {delay:.2f} seconds before retry {retry_count}")
                 time.sleep(delay)
             
+            logger.info(f"Making request to: {url}")
+            logger.info(f"Params: {params}")
+            logger.info(f"API Key present: {bool(self.api_key and len(self.api_key) > 0)}")
+            
             response = self.session.get(url, params=params, timeout=30)
             
+            logger.info(f"Response status code: {response.status_code}")
+            logger.info(f"Response headers: {dict(response.headers)}")
+            logger.info(f"Response content length: {len(response.text)}")
+            logger.info(f"Response content type: {response.headers.get('content-type', 'Not specified')}")
+            
             if response.status_code == 200:
-                return response.json()
+                # Check for empty response first
+                if not response.text or response.text.strip() == "":
+                    logger.error("❌ Received empty response from API")
+                    logger.error(f"Response headers: {dict(response.headers)}")
+                    return None
+                
+                # Log first 500 characters of response for debugging
+                logger.info(f"Response content preview: {response.text[:500]}...")
+                
+                try:
+                    json_data = response.json()
+                    logger.info("✅ Successfully parsed JSON response")
+                    return json_data
+                except json.JSONDecodeError as json_error:
+                    logger.error(f"❌ JSON parsing failed: {json_error}")
+                    logger.error(f"JSON error type: {type(json_error).__name__}")
+                    logger.error(f"JSON error args: {json_error.args}")
+                    
+                    # Check for specific error patterns
+                    error_msg = str(json_error)
+                    if "Expecting value: line 1 column 1 (char 0)" in error_msg:
+                        logger.error("⚠️  This indicates an empty response or non-JSON content")
+                    
+                    logger.error(f"Full response content (length={len(response.text)}):")
+                    logger.error(f"'{response.text}'")
+                    logger.error(f"Response encoding: {response.encoding}")
+                    logger.error(f"Response raw content (bytes): {response.content}")
+                    
+                    # Try to decode with different encoding
+                    if response.encoding and response.encoding.lower() != 'utf-8':
+                        try:
+                            logger.info(f"Trying to re-encode from {response.encoding} to utf-8")
+                            response.encoding = 'utf-8'
+                            json_data = response.json()
+                            logger.info("✅ Successfully parsed JSON after encoding fix")
+                            return json_data
+                        except Exception as encoding_error:
+                            logger.error(f"Failed to parse JSON even after encoding fix: {encoding_error}")
+                    
+                    # Check if response might be HTML error page
+                    if response.text.strip().startswith('<'):
+                        logger.error("⚠️  Response appears to be HTML - possibly an error page or redirect")
+                        
+                    return None
+                except Exception as e:
+                    logger.error(f"❌ Unexpected error parsing JSON: {e}")
+                    logger.error(f"Full response content: {response.text}")
+                    return None
+                    
             elif response.status_code == 403:
-                logger.warning(f"403 Forbidden for {endpoint}. Attempting workarounds...")
+                logger.warning(f"403 Forbidden for {endpoint}")
+                logger.warning(f"Response content: {response.text}")
                 
                 # Try with different headers
                 if retry_count < max_retries:
@@ -125,17 +202,24 @@ class CloudCQCFetcher:
                 # Rate limited - wait and retry
                 retry_after = int(response.headers.get('Retry-After', 60))
                 logger.warning(f"Rate limited. Waiting {retry_after} seconds...")
+                logger.warning(f"Response content: {response.text}")
                 time.sleep(retry_after)
                 if retry_count < max_retries:
                     return self._make_request(endpoint, params, retry_count + 1)
             else:
-                logger.error(f"Request failed with status {response.status_code}: {response.text}")
+                logger.error(f"Request failed with status {response.status_code}")
+                logger.error(f"Response content: {response.text}")
+                logger.error(f"Response headers: {dict(response.headers)}")
                 return None
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"Request exception for {endpoint}: {e}")
             if retry_count < max_retries:
+                logger.info(f"Retrying request (attempt {retry_count + 1}/{max_retries})")
                 return self._make_request(endpoint, params, retry_count + 1)
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error making request: {e}")
             return None
     
     def fetch_providers(self, page: int = 1, per_page: int = 100) -> Optional[Dict]:
@@ -217,36 +301,76 @@ class CloudCQCFetcher:
     
     def test_connection(self) -> bool:
         """Test API connection and authentication."""
-        logger.info("Testing CQC API connection...")
+        logger.info("=" * 60)
+        logger.info("🔍 TESTING CQC API CONNECTION")
+        logger.info("=" * 60)
+        
+        # Debug environment
+        logger.info(f"Project ID: {self.project_id}")
+        logger.info(f"Base URL: {self.base_url}")
+        logger.info(f"API Key available: {bool(self.api_key and len(self.api_key) > 0)}")
+        
+        if not self.api_key:
+            logger.error("❌ No API key available - cannot proceed")
+            return False
         
         # Try to fetch first page with just 1 item
+        logger.info("\n🔗 Attempting to fetch first location...")
         result = self.fetch_locations(page=1, per_page=1)
         
         if result and 'locations' in result:
             logger.info("✅ API connection successful!")
-            logger.info(f"Total locations available: {result.get('totalPages', 0) * result.get('perPage', 0)}")
+            logger.info(f"Response structure: {list(result.keys())}")
+            logger.info(f"Number of locations in response: {len(result.get('locations', []))}")
+            if 'totalCount' in result:
+                logger.info(f"Total locations available: {result['totalCount']}")
+            if 'totalPages' in result:
+                logger.info(f"Total pages: {result['totalPages']}")
+            logger.info("=" * 60)
             return True
         else:
-            logger.error("❌ API connection failed")
+            logger.error("❌ API connection failed - no valid response received")
+            logger.error("=" * 60)
             return False
 
 def main():
     """Main function for Cloud Run job."""
-    fetcher = CloudCQCFetcher()
+    logger.info("🚀 STARTING CQC DATA FETCHER CLOUD RUN JOB")
+    logger.info("=" * 60)
     
-    # Test connection first
-    if not fetcher.test_connection():
-        logger.error("Failed to connect to CQC API. Please check API key and network settings.")
-        return
+    # Log environment information
+    logger.info("Environment Information:")
+    logger.info(f"  Python version: {os.sys.version}")
+    logger.info(f"  Working directory: {os.getcwd()}")
+    logger.info(f"  Environment variables:")
+    for key in ['GCP_PROJECT', 'BATCH_SIZE', 'MAX_LOCATIONS', 'CQC_API_KEY']:
+        value = os.environ.get(key, 'Not set')
+        if key == 'CQC_API_KEY' and value != 'Not set':
+            value = f"{value[:10]}...{value[-4:]}"
+        logger.info(f"    {key}: {value}")
     
-    # Fetch batch of locations
-    batch_size = int(os.environ.get('BATCH_SIZE', '100'))
-    max_locations = int(os.environ.get('MAX_LOCATIONS', '1000'))
-    
-    logger.info(f"Starting to fetch up to {max_locations} locations...")
-    total = fetcher.fetch_and_store_batch(batch_size, max_locations)
-    
-    logger.info(f"Successfully fetched and stored {total} locations")
+    try:
+        fetcher = CloudCQCFetcher()
+        
+        # Test connection first
+        if not fetcher.test_connection():
+            logger.error("❌ Failed to connect to CQC API. Please check API key and network settings.")
+            return
+        
+        # Fetch batch of locations
+        batch_size = int(os.environ.get('BATCH_SIZE', '100'))
+        max_locations = int(os.environ.get('MAX_LOCATIONS', '1000'))
+        
+        logger.info(f"🔄 Starting to fetch up to {max_locations} locations (batch size: {batch_size})...")
+        total = fetcher.fetch_and_store_batch(batch_size, max_locations)
+        
+        logger.info(f"✅ Successfully fetched and stored {total} locations")
+        
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in main function: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise
 
 if __name__ == "__main__":
     main()

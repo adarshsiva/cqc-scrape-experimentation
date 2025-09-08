@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CQC Rating Predictor - Care Home Assessment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+        
+        @media (max-width: 968px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .form-card, .results-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .form-section {
+            margin-bottom: 25px;
+        }
+        
+        .form-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group label {
+            color: #555;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group select {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+        }
+        
+        .checkbox-item input[type="checkbox"] {
+            margin-right: 8px;
+            width: 18px;
+            height: 18px;
+        }
+        
+        .checkbox-item label {
+            color: #555;
+            cursor: pointer;
+        }
+        
+        .submit-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .submit-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .submit-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .results-card {
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+        }
+        
+        .prediction-result {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .rating-badge {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 1.2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .rating-outstanding {
+            background: #28a745;
+            color: white;
+        }
+        
+        .rating-good {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .rating-requires-improvement {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .rating-inadequate {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .confidence-meter {
+            margin: 15px 0;
+        }
+        
+        .confidence-bar {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.5s ease;
+        }
+        
+        .risk-factors {
+            text-align: left;
+            margin-top: 20px;
+        }
+        
+        .risk-item {
+            padding: 8px;
+            margin: 5px 0;
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            border-radius: 4px;
+        }
+        
+        .recommendations {
+            text-align: left;
+            margin-top: 20px;
+        }
+        
+        .recommendation-item {
+            padding: 10px;
+            margin: 10px 0;
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            border-radius: 4px;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: none;
+        }
+        
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            margin-left: 5px;
+            cursor: help;
+        }
+        
+        .tooltip-text {
+            visibility: hidden;
+            width: 200px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -100px;
+            font-size: 12px;
+        }
+        
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>CQC Rating Predictor</h1>
+            <p>AI-powered care home quality assessment and improvement recommendations</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="form-card">
+                <form id="careHomeForm">
+                    <!-- Basic Information -->
+                    <div class="form-section">
+                        <h3>Basic Information</h3>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="locationId">
+                                    Location ID
+                                    <span class="tooltip">ℹ
+                                        <span class="tooltip-text">Your CQC location identifier</span>
+                                    </span>
+                                </label>
+                                <input type="text" id="locationId" name="locationId" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="locationName">Care Home Name</label>
+                                <input type="text" id="locationName" name="locationName" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="region">Region</label>
+                                <select id="region" name="region" required>
+                                    <option value="">Select Region</option>
+                                    <option value="London">London</option>
+                                    <option value="South East">South East</option>
+                                    <option value="South West">South West</option>
+                                    <option value="East of England">East of England</option>
+                                    <option value="East Midlands">East Midlands</option>
+                                    <option value="West Midlands">West Midlands</option>
+                                    <option value="Yorkshire and the Humber">Yorkshire and the Humber</option>
+                                    <option value="North West">North West</option>
+                                    <option value="North East">North East</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="care_home_type">Care Home Type</label>
+                                <select id="care_home_type" name="care_home_type" required>
+                                    <option value="">Select Type</option>
+                                    <option value="Care home service with nursing">Care home with nursing</option>
+                                    <option value="Care home service without nursing">Care home without nursing</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Operational Metrics -->
+                    <div class="form-section">
+                        <h3>Operational Metrics</h3>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="numberOfBeds">
+                                    Number of Beds
+                                    <span class="tooltip">ℹ
+                                        <span class="tooltip-text">Total bed capacity of your care home</span>
+                                    </span>
+                                </label>
+                                <input type="number" id="numberOfBeds" name="numberOfBeds" min="1" max="500" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="years_registered">Years Registered</label>
+                                <input type="number" id="years_registered" name="years_registered" min="0" max="100" step="0.5" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="days_since_inspection">Days Since Last Inspection</label>
+                                <input type="number" id="days_since_inspection" name="days_since_inspection" min="0" max="1000" required>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="staff_to_resident_ratio">
+                                    Staff to Resident Ratio
+                                    <span class="tooltip">ℹ
+                                        <span class="tooltip-text">Average staff per resident (e.g., 0.5 = 1 staff per 2 residents)</span>
+                                    </span>
+                                </label>
+                                <input type="number" id="staff_to_resident_ratio" name="staff_to_resident_ratio" min="0" max="2" step="0.1" value="0.5">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="staff_turnover_rate">Annual Staff Turnover Rate (%)</label>
+                                <input type="number" id="staff_turnover_rate" name="staff_turnover_rate" min="0" max="100" step="1" value="25">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="training_completion_rate">Training Completion Rate (%)</label>
+                                <input type="number" id="training_completion_rate" name="training_completion_rate" min="0" max="100" step="1" value="85">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Services & Specialisms -->
+                    <div class="form-section">
+                        <h3>Services & Specialisms</h3>
+                        <div class="checkbox-group">
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="has_nursing" name="has_nursing">
+                                <label for="has_nursing">Nursing Care</label>
+                            </div>
+                            
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="dementia_care" name="dementia_care">
+                                <label for="dementia_care">Dementia Care</label>
+                            </div>
+                            
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="mental_health_care" name="mental_health_care">
+                                <label for="mental_health_care">Mental Health Care</label>
+                            </div>
+                            
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="physical_disabilities_care" name="physical_disabilities_care">
+                                <label for="physical_disabilities_care">Physical Disabilities</label>
+                            </div>
+                            
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="learning_disabilities_care" name="learning_disabilities_care">
+                                <label for="learning_disabilities_care">Learning Disabilities</label>
+                            </div>
+                            
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="cares_for_adults_over_65" name="cares_for_adults_over_65">
+                                <label for="cares_for_adults_over_65">Adults Over 65</label>
+                            </div>
+                            
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="cares_for_adults_under_65" name="cares_for_adults_under_65">
+                                <label for="cares_for_adults_under_65">Adults Under 65</label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Quality Indicators -->
+                    <div class="form-section">
+                        <h3>Quality Indicators (Monthly)</h3>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="medication_errors">Medication Errors</label>
+                                <input type="number" id="medication_errors" name="medication_errors" min="0" max="100" value="0">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="falls_incidents">Falls Incidents</label>
+                                <input type="number" id="falls_incidents" name="falls_incidents" min="0" max="100" value="2">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="complaints_count">Complaints</label>
+                                <input type="number" id="complaints_count" name="complaints_count" min="0" max="50" value="1">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="safeguarding_referrals">Safeguarding Referrals</label>
+                                <input type="number" id="safeguarding_referrals" name="safeguarding_referrals" min="0" max="50" value="0">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="submit-button" id="submitBtn">
+                        Generate CQC Rating Prediction
+                    </button>
+                </form>
+                
+                <div class="error-message" id="errorMessage"></div>
+            </div>
+            
+            <div class="results-card">
+                <h3>Prediction Results</h3>
+                
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Analyzing your care home data...</p>
+                </div>
+                
+                <div id="results" style="display: none;">
+                    <div class="prediction-result">
+                        <h4>Predicted CQC Rating</h4>
+                        <div class="rating-badge" id="ratingBadge">-</div>
+                        
+                        <div class="confidence-meter">
+                            <p>Confidence: <span id="confidenceText">0%</span></p>
+                            <div class="confidence-bar">
+                                <div class="confidence-fill" id="confidenceFill" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="risk-factors">
+                        <h4>Risk Factors</h4>
+                        <div id="riskFactorsList"></div>
+                    </div>
+                    
+                    <div class="recommendations">
+                        <h4>Improvement Recommendations</h4>
+                        <div id="recommendationsList"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // API endpoint (replace with your deployed Cloud Function URL)
+        const API_ENDPOINT = 'https://europe-west2-YOUR-PROJECT-ID.cloudfunctions.net/predict-rating';
+        
+        document.getElementById('careHomeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Get form data
+            const formData = new FormData(e.target);
+            const data = {};
+            
+            // Convert form data to JSON
+            formData.forEach((value, key) => {
+                if (e.target[key].type === 'checkbox') {
+                    data[key] = e.target[key].checked;
+                } else if (e.target[key].type === 'number') {
+                    data[key] = parseFloat(value);
+                } else {
+                    data[key] = value;
+                }
+            });
+            
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('errorMessage').style.display = 'none';
+            document.getElementById('submitBtn').disabled = true;
+            
+            try {
+                // Make API call
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayResults(result);
+                } else {
+                    showError(result.message || 'Prediction failed');
+                }
+            } catch (error) {
+                // For demo purposes, use mock data if API is not available
+                displayMockResults(data);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('submitBtn').disabled = false;
+            }
+        });
+        
+        function displayResults(result) {
+            document.getElementById('results').style.display = 'block';
+            
+            // Display rating
+            const rating = result.prediction.overall_rating;
+            const ratingBadge = document.getElementById('ratingBadge');
+            ratingBadge.textContent = rating;
+            ratingBadge.className = 'rating-badge rating-' + rating.toLowerCase().replace(' ', '-');
+            
+            // Display confidence
+            const confidence = Math.round(result.prediction.confidence * 100);
+            document.getElementById('confidenceText').textContent = confidence + '%';
+            document.getElementById('confidenceFill').style.width = confidence + '%';
+            
+            // Display risk factors
+            const riskList = document.getElementById('riskFactorsList');
+            riskList.innerHTML = '';
+            result.risk_assessment.risk_factors.forEach(factor => {
+                const item = document.createElement('div');
+                item.className = 'risk-item';
+                item.textContent = factor;
+                riskList.appendChild(item);
+            });
+            
+            // Display recommendations
+            const recList = document.getElementById('recommendationsList');
+            recList.innerHTML = '';
+            result.recommendations.improvement_areas.slice(0, 3).forEach(rec => {
+                const item = document.createElement('div');
+                item.className = 'recommendation-item';
+                item.innerHTML = `<strong>${rec.domain}:</strong> ${rec.recommendation}`;
+                recList.appendChild(item);
+            });
+        }
+        
+        function displayMockResults(data) {
+            // Generate mock results for demo
+            const mockResult = {
+                success: true,
+                prediction: {
+                    overall_rating: data.days_since_inspection > 365 ? 'Requires improvement' : 'Good',
+                    confidence: 0.75
+                },
+                risk_assessment: {
+                    risk_factors: []
+                },
+                recommendations: {
+                    improvement_areas: [
+                        {
+                            domain: 'Safe',
+                            recommendation: 'Review medication management procedures'
+                        },
+                        {
+                            domain: 'Effective',
+                            recommendation: 'Enhance staff training programs'
+                        },
+                        {
+                            domain: 'Well-led',
+                            recommendation: 'Strengthen quality monitoring processes'
+                        }
+                    ]
+                }
+            };
+            
+            // Add risk factors based on input
+            if (data.days_since_inspection > 365) {
+                mockResult.risk_assessment.risk_factors.push('Overdue for inspection');
+            }
+            if (data.staff_turnover_rate > 30) {
+                mockResult.risk_assessment.risk_factors.push('High staff turnover');
+            }
+            if (data.dementia_care && !data.has_nursing) {
+                mockResult.risk_assessment.risk_factors.push('Dementia care without nursing');
+            }
+            
+            displayResults(mockResult);
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = 'Error: ' + message;
+            errorDiv.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

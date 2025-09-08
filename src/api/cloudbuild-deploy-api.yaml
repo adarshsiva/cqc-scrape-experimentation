@@ -1,0 +1,109 @@
+steps:
+  # Deploy prediction API to Cloud Functions
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Deploying CQC Rating Prediction API to Cloud Functions..."
+        
+        # Deploy main prediction endpoint
+        gcloud functions deploy predict-rating \
+          --gen2 \
+          --runtime=python311 \
+          --region=europe-west2 \
+          --source=src/api \
+          --entry-point=predict_rating \
+          --trigger-http \
+          --allow-unauthenticated \
+          --memory=1024MB \
+          --timeout=60s \
+          --max-instances=100 \
+          --min-instances=1 \
+          --set-env-vars="GCP_PROJECT=$PROJECT_ID,GCP_REGION=europe-west2,MODEL_BUCKET=$PROJECT_ID-cqc-processed" \
+          --set-secrets="VERTEX_ENDPOINT_ID=vertex-endpoint-id:latest" \
+          --service-account=cqc-api@$PROJECT_ID.iam.gserviceaccount.com
+
+  # Deploy health check endpoint
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Deploying health check endpoint..."
+        
+        gcloud functions deploy health-check \
+          --gen2 \
+          --runtime=python311 \
+          --region=europe-west2 \
+          --source=src/api \
+          --entry-point=health_check \
+          --trigger-http \
+          --allow-unauthenticated \
+          --memory=256MB \
+          --timeout=10s \
+          --max-instances=10 \
+          --min-instances=0
+
+  # Deploy batch prediction endpoint
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Deploying batch prediction endpoint..."
+        
+        gcloud functions deploy batch-predict \
+          --gen2 \
+          --runtime=python311 \
+          --region=europe-west2 \
+          --source=src/api \
+          --entry-point=batch_predict \
+          --trigger-http \
+          --allow-unauthenticated \
+          --memory=2048MB \
+          --timeout=300s \
+          --max-instances=50 \
+          --min-instances=0 \
+          --set-env-vars="GCP_PROJECT=$PROJECT_ID,GCP_REGION=europe-west2,MODEL_BUCKET=$PROJECT_ID-cqc-processed"
+
+  # Test the deployed functions
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Testing deployed functions..."
+        
+        # Get function URLs
+        PREDICT_URL=$(gcloud functions describe predict-rating --region=europe-west2 --format="value(serviceConfig.uri)")
+        HEALTH_URL=$(gcloud functions describe health-check --region=europe-west2 --format="value(serviceConfig.uri)")
+        
+        echo "Prediction API URL: $PREDICT_URL"
+        echo "Health Check URL: $HEALTH_URL"
+        
+        # Test health check
+        echo "Testing health check..."
+        curl -X GET "$HEALTH_URL"
+        
+        # Test prediction with sample data
+        echo -e "\n\nTesting prediction API with sample data..."
+        curl -X POST "$PREDICT_URL" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "locationId": "test-001",
+            "numberOfBeds": 45,
+            "years_registered": 5,
+            "days_since_inspection": 200,
+            "has_nursing": true,
+            "dementia_care": true,
+            "region": "London",
+            "care_home_type": "Care home service with nursing"
+          }'
+        
+        echo -e "\n\nAPI deployment completed successfully!"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s

@@ -1,0 +1,317 @@
+# Cloud Build configuration for deploying Vertex AI Feature Store for CQC Prediction System
+# 
+# This configuration creates a comprehensive feature store with:
+# - 80+ CQC API features for location, provider, and regulatory data
+# - Real-time dashboard metrics for incident tracking and operational monitoring
+# - Online serving with 10 nodes for sub-100ms latency
+# - Proper IAM configuration and security setup
+# - BigQuery integration for batch feature imports
+# - Monitoring and alerting configuration
+
+steps:
+  # Step 1: Enable required APIs
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'enable-apis'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Enabling required APIs..."
+        gcloud services enable \
+          aiplatform.googleapis.com \
+          bigquery.googleapis.com \
+          storage.googleapis.com \
+          pubsub.googleapis.com \
+          cloudscheduler.googleapis.com \
+          monitoring.googleapis.com \
+          logging.googleapis.com \
+          secretmanager.googleapis.com \
+          --project=${PROJECT_ID} \
+          --quiet
+    waitFor: ['-']
+
+  # Step 2: Create service account with proper naming
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'create-service-account'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Extract service account name from email format
+        SA_NAME="cqc-feature-store-sa"
+        SA_EMAIL="$${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+        
+        echo "Creating service account: $${SA_EMAIL}"
+        
+        # Create service account (allow failure if already exists)
+        gcloud iam service-accounts create "$${SA_NAME}" \
+          --display-name="CQC Feature Store Service Account" \
+          --description="Service account for CQC Feature Store operations with Vertex AI" \
+          --project=${PROJECT_ID} \
+          --quiet || echo "Service account may already exist"
+    waitFor: ['enable-apis']
+
+  # Step 3: Grant comprehensive IAM permissions
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'grant-permissions'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        SA_EMAIL="cqc-feature-store-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+        
+        echo "Granting IAM roles to: $${SA_EMAIL}"
+        
+        # Define all required roles for feature store operations
+        ROLES=(
+          "roles/aiplatform.user"
+          "roles/aiplatform.featurestoreUser"
+          "roles/aiplatform.featurestoreInstanceCreator"
+          "roles/bigquery.dataEditor"
+          "roles/bigquery.jobUser"
+          "roles/storage.objectViewer"
+          "roles/pubsub.subscriber"
+          "roles/monitoring.metricWriter"
+          "roles/logging.logWriter"
+          "roles/cloudscheduler.jobRunner"
+          "roles/secretmanager.secretAccessor"
+        )
+        
+        for role in "$${ROLES[@]}"; do
+          echo "Granting role: $${role}"
+          gcloud projects add-iam-policy-binding ${PROJECT_ID} \
+            --member="serviceAccount:$${SA_EMAIL}" \
+            --role="$${role}" \
+            --quiet || echo "Failed to grant $${role} (may already exist)"
+        done
+        
+        echo "IAM permissions configured successfully"
+    waitFor: ['create-service-account']
+
+  # Step 4: Create BigQuery datasets for feature store integration
+  - name: 'gcr.io/cloud-builders/bq'
+    id: 'create-datasets'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Creating BigQuery datasets for feature store..."
+        
+        # Create main feature store dataset
+        bq mk \
+          --dataset \
+          --location=EU \
+          --description="CQC Feature Store staging tables and views" \
+          --labels=environment:production,team:ml-engineering,purpose:feature_store \
+          ${PROJECT_ID}:cqc_feature_store || echo "Dataset may already exist"
+        
+        # Create backup dataset for feature store data
+        bq mk \
+          --dataset \
+          --location=EU \
+          --description="CQC Feature Store backup and archival data" \
+          --labels=environment:production,team:ml-engineering,purpose:backup \
+          ${PROJECT_ID}:cqc_feature_store_backup || echo "Backup dataset may already exist"
+          
+        echo "BigQuery datasets created successfully"
+    waitFor: ['enable-apis']
+
+  # Step 5: Install Python dependencies and validate environment
+  - name: 'python:3.10-slim'
+    id: 'install-dependencies'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Installing Python dependencies..."
+        
+        # Update package list and install system dependencies
+        apt-get update && apt-get install -y gcc g++ && rm -rf /var/lib/apt/lists/*
+        
+        # Install Python packages
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+        # Validate installation
+        python3 -c "
+import google.cloud.aiplatform
+import google.cloud.bigquery
+import google.cloud.storage
+print('✅ All required packages installed successfully')
+print(f'Vertex AI SDK version: {google.cloud.aiplatform.__version__}')
+print(f'BigQuery SDK version: {google.cloud.bigquery.__version__}')
+        "
+        
+        echo "Dependencies installed and validated"
+    dir: 'src/feature_store'
+    waitFor: ['grant-permissions']
+
+  # Step 6: Deploy comprehensive feature store
+  - name: 'python:3.10-slim'
+    id: 'deploy-feature-store'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Deploying CQC Feature Store..."
+        
+        # Install dependencies (copy from previous step for reliability)
+        apt-get update && apt-get install -y gcc g++ && rm -rf /var/lib/apt/lists/*
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+        # Run feature store setup with verbose logging
+        python3 setup_feature_store.py \
+          --project-id=${PROJECT_ID} \
+          --region=${_REGION} \
+          --feature-store-id=${_FEATURE_STORE_ID} \
+          --verbose
+        
+        echo "Feature store deployment completed"
+    env:
+      - 'GOOGLE_CLOUD_PROJECT=${PROJECT_ID}'
+      - 'GOOGLE_CLOUD_REGION=${_REGION}'
+    dir: 'src/feature_store'
+    waitFor: ['install-dependencies', 'create-datasets']
+
+  # Step 7: Create monitoring and alerting
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'setup-monitoring'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Setting up monitoring and alerting..."
+        
+        # Create log-based metric for feature store operations
+        gcloud logging metrics create cqc_feature_store_errors \
+          --description="Errors in CQC Feature Store operations" \
+          --log-filter='resource.type="aiplatform.googleapis.com/FeatureStore" AND severity>=ERROR' \
+          --quiet || echo "Metric may already exist"
+        
+        # Create alert policy for feature store errors
+        cat > alert_policy.json << EOF
+        {
+          "displayName": "CQC Feature Store Error Alert",
+          "documentation": {
+            "content": "Alert when CQC Feature Store encounters errors",
+            "mimeType": "text/markdown"
+          },
+          "conditions": [
+            {
+              "displayName": "Feature Store Error Rate",
+              "conditionThreshold": {
+                "filter": "resource.type=\"aiplatform.googleapis.com/FeatureStore\"",
+                "comparison": "COMPARISON_GREATER_THAN",
+                "thresholdValue": "1.0",
+                "duration": "300s"
+              }
+            }
+          ],
+          "enabled": true,
+          "alertStrategy": {
+            "autoClose": "1800s"
+          }
+        }
+        EOF
+        
+        # Create the alert policy (this may fail if Monitoring API is not fully ready)
+        gcloud alpha monitoring policies create --policy-from-file=alert_policy.json --quiet || echo "Alert policy creation skipped"
+        
+        echo "Monitoring setup completed"
+    waitFor: ['deploy-feature-store']
+
+  # Step 8: Create scheduled feature update job
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'schedule-feature-updates'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Setting up scheduled feature updates..."
+        
+        # Delete existing scheduler job if it exists
+        gcloud scheduler jobs delete cqc-feature-store-update \
+          --location=${_REGION} \
+          --quiet || echo "No existing job to delete"
+        
+        # Create Cloud Scheduler job for regular feature updates
+        gcloud scheduler jobs create http cqc-feature-store-update \
+          --location=${_REGION} \
+          --schedule="0 */6 * * *" \
+          --uri="https://${_REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/cqc-feature-update:run" \
+          --http-method=POST \
+          --oidc-service-account-email="cqc-feature-store-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
+          --time-zone="Europe/London" \
+          --description="Update CQC Feature Store every 6 hours with latest data from BigQuery" \
+          --headers="Content-Type=application/json" \
+          --message-body="{\"feature_store_id\": \"${_FEATURE_STORE_ID}\", \"region\": \"${_REGION}\"}" \
+          --quiet || echo "Scheduler job creation failed (may need manual setup)"
+        
+        echo "Scheduled updates configured"
+    waitFor: ['setup-monitoring']
+
+  # Step 9: Validate deployment and generate report
+  - name: 'python:3.10-slim'
+    id: 'validate-deployment'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Validating feature store deployment..."
+        
+        # Install dependencies
+        apt-get update && apt-get install -y gcc g++ && rm -rf /var/lib/apt/lists/*
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+        # Run validation
+        python3 -c "
+from setup_feature_store import CQCFeatureStoreSetup
+import json
+
+try:
+    fs_manager = CQCFeatureStoreSetup('${PROJECT_ID}', '${_REGION}', '${_FEATURE_STORE_ID}')
+    validation_results = fs_manager.validate_setup()
+    
+    print('=== FEATURE STORE DEPLOYMENT VALIDATION ===')
+    print(json.dumps(validation_results, indent=2, default=str))
+    
+    if validation_results.get('errors'):
+        print('❌ Validation failed with errors')
+        exit(1)
+    else:
+        print('✅ Feature store deployment validated successfully')
+        
+except Exception as e:
+    print(f'❌ Validation failed: {e}')
+    exit(1)
+        "
+        
+        echo "Deployment validation completed"
+    env:
+      - 'GOOGLE_CLOUD_PROJECT=${PROJECT_ID}'
+      - 'GOOGLE_CLOUD_REGION=${_REGION}'
+    dir: 'src/feature_store'
+    waitFor: ['schedule-feature-updates']
+
+# Configuration and options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 100
+  
+# Substitution variables with defaults
+substitutions:
+  _REGION: 'europe-west2'
+  _FEATURE_STORE_ID: 'cqc-prediction-features'
+  
+# Extended timeout for feature store creation (can take 30+ minutes)
+timeout: '7200s'  # 2 hours
+
+# Additional metadata
+tags:
+  - 'feature-store'
+  - 'cqc-prediction'
+  - 'vertex-ai'
+  - 'ml-infrastructure'

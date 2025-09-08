@@ -1,0 +1,397 @@
+# Cloud Build configuration for CQC ML model training and deployment
+# This configuration packages ML code, submits training jobs to Vertex AI, and deploys models
+
+substitutions:
+  _GCP_PROJECT: '${PROJECT_ID}'
+  _GCP_REGION: 'us-central1'
+  _MODEL_VERSION: 'v${BUILD_ID}'
+  _PIPELINE_ROOT: 'gs://${PROJECT_ID}-cqc-pipelines'
+  _MODEL_REGISTRY: 'gs://${PROJECT_ID}-cqc-models'
+  _TRAINING_IMAGE: 'gcr.io/${PROJECT_ID}/cqc-ml-trainer'
+  _RUN_MODE: 'run'  # Options: 'run', 'schedule', 'compile'
+  _DEPLOY_MODEL: 'true'
+  _TUNE_HYPERPARAMETERS: 'true'
+
+options:
+  # Use higher CPU machine for ML workloads
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+  
+timeout: '7200s'  # 2 hours for complete ML pipeline
+
+steps:
+  # Step 1: Build custom training container
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-trainer-image'
+    args:
+      - 'build'
+      - '-t'
+      - '${_TRAINING_IMAGE}:${_MODEL_VERSION}'
+      - '-t'
+      - '${_TRAINING_IMAGE}:latest'
+      - '-f'
+      - 'src/ml/Dockerfile.train'
+      - '.'
+    waitFor: ['-']
+
+  # Step 2: Push training container to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-trainer-image'
+    args:
+      - 'push'
+      - '${_TRAINING_IMAGE}:${_MODEL_VERSION}'
+    waitFor: ['build-trainer-image']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-trainer-latest'
+    args:
+      - 'push'
+      - '${_TRAINING_IMAGE}:latest'
+    waitFor: ['build-trainer-image']
+
+  # Step 3: Set up Python environment for pipeline orchestration
+  - name: 'python:3.9-slim'
+    id: 'setup-python-env'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install --upgrade pip
+        pip install google-cloud-aiplatform kfp google-cloud-storage google-cloud-bigquery
+        echo "Python environment ready"
+    waitFor: ['-']
+
+  # Step 4: Create required GCS buckets
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    id: 'create-buckets'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Creating required GCS buckets..."
+        
+        # Pipeline root bucket
+        gsutil mb -p ${_GCP_PROJECT} -l ${_GCP_REGION} gs://${_GCP_PROJECT}-cqc-pipelines || echo "Pipeline bucket exists"
+        
+        # Model registry bucket
+        gsutil mb -p ${_GCP_PROJECT} -l ${_GCP_REGION} gs://${_GCP_PROJECT}-cqc-models || echo "Model bucket exists"
+        
+        # Enable versioning on model bucket
+        gsutil versioning set on gs://${_GCP_PROJECT}-cqc-models
+        
+        # Set lifecycle policy for cost optimization
+        cat > /tmp/lifecycle.json << EOF
+        {
+          "lifecycle": {
+            "rule": [
+              {
+                "action": {"type": "Delete"},
+                "condition": {"age": 90, "isLive": false}
+              },
+              {
+                "action": {"type": "SetStorageClass", "storageClass": "COLDLINE"},
+                "condition": {"age": 30}
+              }
+            ]
+          }
+        }
+        EOF
+        
+        gsutil lifecycle set /tmp/lifecycle.json gs://${_GCP_PROJECT}-cqc-models
+        
+        echo "Buckets configured successfully"
+    waitFor: ['-']
+
+  # Step 5: Run feature engineering (if needed)
+  - name: 'python:3.9-slim'
+    id: 'feature-engineering'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        pip install --upgrade pip
+        pip install google-cloud-bigquery google-cloud-storage pandas numpy scikit-learn
+        
+        cd src/ml
+        
+        echo "Running feature engineering..."
+        python feature_engineering.py
+        
+        echo "Feature engineering completed"
+    env:
+      - 'GCP_PROJECT=${_GCP_PROJECT}'
+      - 'GCP_REGION=${_GCP_REGION}'
+    waitFor: ['create-buckets']
+
+  # Step 6: Conditional - Run individual model training or pipeline
+  # Option A: Run individual XGBoost training
+  - name: 'python:3.9-slim'
+    id: 'train-xgboost'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "${_RUN_MODE}" = "individual" ]; then
+          echo "Running individual XGBoost training..."
+          pip install --upgrade pip
+          pip install -r src/ml/requirements.txt
+          
+          cd src/ml
+          python xgboost_model.py
+          
+          echo "XGBoost training completed"
+        else
+          echo "Skipping individual XGBoost training - using pipeline mode"
+        fi
+    env:
+      - 'GCP_PROJECT=${_GCP_PROJECT}'
+      - 'GCP_REGION=${_GCP_REGION}'
+      - 'DEPLOY_MODEL=${_DEPLOY_MODEL}'
+      - 'TUNE_HYPERPARAMETERS=${_TUNE_HYPERPARAMETERS}'
+    waitFor: ['feature-engineering']
+
+  # Option B: Run Random Forest training
+  - name: 'python:3.9-slim'
+    id: 'train-random-forest'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "${_RUN_MODE}" = "individual" ]; then
+          echo "Running individual Random Forest training..."
+          pip install --upgrade pip
+          pip install -r src/ml/requirements.txt
+          
+          cd src/ml
+          python random_forest_model.py
+          
+          echo "Random Forest training completed"
+        else
+          echo "Skipping individual Random Forest training - using pipeline mode"
+        fi
+    env:
+      - 'GCP_PROJECT=${_GCP_PROJECT}'
+      - 'GCP_REGION=${_GCP_REGION}'
+      - 'DEPLOY_MODEL=false'  # Don't deploy RF individually
+      - 'TUNE_HYPERPARAMETERS=${_TUNE_HYPERPARAMETERS}'
+    waitFor: ['feature-engineering']
+
+  # Option C: Run Vertex AI Pipeline
+  - name: 'python:3.9-slim'
+    id: 'run-vertex-pipeline'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "${_RUN_MODE}" = "run" ] || [ "${_RUN_MODE}" = "schedule" ] || [ "${_RUN_MODE}" = "compile" ]; then
+          echo "Running Vertex AI Pipeline in mode: ${_RUN_MODE}"
+          pip install --upgrade pip
+          pip install google-cloud-aiplatform kfp google-cloud-storage google-cloud-bigquery
+          
+          cd src/ml
+          python vertex_ai_pipeline.py
+          
+          echo "Vertex AI Pipeline execution completed"
+        else
+          echo "Skipping Vertex AI Pipeline - using individual training mode"
+        fi
+    env:
+      - 'GCP_PROJECT=${_GCP_PROJECT}'
+      - 'GCP_REGION=${_GCP_REGION}'
+      - 'RUN_MODE=${_RUN_MODE}'
+    waitFor: ['feature-engineering', 'push-trainer-latest']
+
+  # Step 7: Submit custom training job to Vertex AI (alternative to pipeline)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    id: 'submit-vertex-training'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "${_RUN_MODE}" = "vertex_training" ]; then
+          echo "Submitting custom training job to Vertex AI..."
+          
+          # Submit XGBoost training job
+          gcloud ai custom-jobs create \
+            --project=${_GCP_PROJECT} \
+            --region=${_GCP_REGION} \
+            --display-name="cqc-xgboost-training-${BUILD_ID}" \
+            --config=- <<EOF
+        {
+          "jobSpec": {
+            "workerPoolSpecs": [
+              {
+                "machineSpec": {
+                  "machineType": "n1-standard-8"
+                },
+                "replicaCount": 1,
+                "containerSpec": {
+                  "imageUri": "${_TRAINING_IMAGE}:${_MODEL_VERSION}",
+                  "command": ["python", "xgboost_model.py"],
+                  "env": [
+                    {"name": "GCP_PROJECT", "value": "${_GCP_PROJECT}"},
+                    {"name": "GCP_REGION", "value": "${_GCP_REGION}"},
+                    {"name": "DEPLOY_MODEL", "value": "${_DEPLOY_MODEL}"},
+                    {"name": "TUNE_HYPERPARAMETERS", "value": "${_TUNE_HYPERPARAMETERS}"}
+                  ]
+                }
+              }
+            ]
+          }
+        }
+        EOF
+          
+          echo "Custom training job submitted"
+        else
+          echo "Skipping Vertex AI custom training job"
+        fi
+    waitFor: ['push-trainer-latest']
+
+  # Step 8: Model validation and testing
+  - name: 'python:3.9-slim'
+    id: 'model-validation'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Running model validation..."
+        pip install --upgrade pip
+        pip install google-cloud-aiplatform google-cloud-storage joblib pandas numpy scikit-learn
+        
+        # Create validation script
+        cat > validate_models.py << 'EOF'
+        import os
+        from google.cloud import storage
+        import joblib
+        import json
+        
+        def validate_model_artifacts():
+            """Validate that model artifacts are properly saved."""
+            project_id = os.environ['GCP_PROJECT']
+            bucket_name = f"{project_id}-cqc-models"
+            
+            client = storage.Client()
+            bucket = client.bucket(bucket_name)
+            
+            model_types = ['xgboost', 'random_forest']
+            validation_results = {}
+            
+            for model_type in model_types:
+                print(f"Validating {model_type} artifacts...")
+                
+                # Check for required files
+                required_files = ['model.pkl', 'feature_names.json', 'metadata.json']
+                
+                for file_name in required_files:
+                    blob_name = f"models/{model_type}/v*/{ file_name}"
+                    blobs = list(bucket.list_blobs(prefix=f"models/{model_type}/"))
+                    
+                    if any(file_name in blob.name for blob in blobs):
+                        print(f"  ✓ {file_name} found")
+                    else:
+                        print(f"  ✗ {file_name} missing")
+                        return False
+                
+                validation_results[model_type] = True
+            
+            print("All model artifacts validated successfully!")
+            return True
+        
+        if __name__ == "__main__":
+            validate_model_artifacts()
+        EOF
+        
+        python validate_models.py
+    env:
+      - 'GCP_PROJECT=${_GCP_PROJECT}'
+    waitFor: ['train-xgboost', 'train-random-forest', 'run-vertex-pipeline']
+
+  # Step 9: Generate training report
+  - name: 'python:3.9-slim'
+    id: 'generate-report'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Generating ML training report..."
+        
+        cat > training_report.md << EOF
+        # CQC ML Model Training Report
+        
+        **Build ID:** ${BUILD_ID}
+        **Model Version:** ${_MODEL_VERSION}
+        **Training Date:** $(date)
+        **Project:** ${_GCP_PROJECT}
+        **Region:** ${_GCP_REGION}
+        
+        ## Training Configuration
+        - **Run Mode:** ${_RUN_MODE}
+        - **Deploy Model:** ${_DEPLOY_MODEL}
+        - **Tune Hyperparameters:** ${_TUNE_HYPERPARAMETERS}
+        - **Training Image:** ${_TRAINING_IMAGE}:${_MODEL_VERSION}
+        
+        ## Artifacts Locations
+        - **Models:** gs://${_GCP_PROJECT}-cqc-models/models/
+        - **Pipelines:** gs://${_GCP_PROJECT}-cqc-pipelines/
+        
+        ## Next Steps
+        1. Review model performance in Vertex AI console
+        2. Test deployed endpoints
+        3. Set up monitoring dashboards
+        4. Schedule regular retraining
+        
+        ## Monitoring Links
+        - **Vertex AI Pipelines:** https://console.cloud.google.com/vertex-ai/pipelines?project=${_GCP_PROJECT}
+        - **Model Registry:** https://console.cloud.google.com/vertex-ai/models?project=${_GCP_PROJECT}
+        - **Endpoints:** https://console.cloud.google.com/vertex-ai/endpoints?project=${_GCP_PROJECT}
+        
+        EOF
+        
+        # Upload report to GCS
+        gsutil cp training_report.md gs://${_GCP_PROJECT}-cqc-models/reports/training_report_${BUILD_ID}.md
+        
+        echo "Training report generated and uploaded"
+        cat training_report.md
+    waitFor: ['model-validation']
+
+  # Step 10: Clean up temporary resources
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    id: 'cleanup'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Cleaning up temporary resources..."
+        
+        # Remove temporary files
+        rm -f /tmp/*.json /tmp/*.pkl 
+        
+        # Clean up old pipeline runs (keep last 10)
+        gsutil -m rm -r gs://${_GCP_PROJECT}-cqc-pipelines/pipeline_runs_older_than_30_days/ || echo "No old pipeline runs to clean"
+        
+        echo "Cleanup completed"
+    waitFor: ['generate-report']
+
+# Additional configuration for specific environments
+availableSecrets:
+  secretManager:
+    - versionName: projects/${PROJECT_ID}/secrets/cqc-api-key/versions/latest
+      env: 'CQC_API_KEY'
+
+# Service account with required permissions
+serviceAccount: 'projects/${PROJECT_ID}/serviceAccounts/vertex-ai-pipeline@${PROJECT_ID}.iam.gserviceaccount.com'
+
+# Artifact registry for storing container images
+images:
+  - '${_TRAINING_IMAGE}:${_MODEL_VERSION}'
+  - '${_TRAINING_IMAGE}:latest'
+
+# Logs configuration
+logsBucket: 'gs://${PROJECT_ID}-build-logs'
+
+# Tags for organization
+tags:
+  - 'ml-training'
+  - 'cqc-models'
+  - 'vertex-ai'
+  - 'production'

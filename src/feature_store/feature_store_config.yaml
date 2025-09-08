@@ -1,0 +1,354 @@
+# CQC Vertex AI Feature Store Configuration
+# Comprehensive configuration for feature store setup, serving, and monitoring
+
+# Project Configuration
+project:
+  id: "machine-learning-exp-467008"
+  region: "europe-west2"
+  environment: "production"
+
+# Feature Store Configuration
+feature_store:
+  id: "cqc-feature-store"
+  display_name: "CQC Rating Predictor Feature Store"
+  description: "Centralized feature store for CQC rating prediction ML system"
+  
+  # Online serving configuration for sub-100ms latency
+  online_serving:
+    fixed_node_count: 10  # Start with 10 nodes for optimal performance
+    scaling:
+      min_node_count: 2
+      max_node_count: 20
+      cpu_utilization_target: 70
+      scale_up_replica_count: 2
+      scale_down_replica_count: 1
+    
+  # Encryption and security
+  encryption:
+    kms_key_name: "projects/machine-learning-exp-467008/locations/europe-west2/keyRings/vertex-ai/cryptoKeys/feature-store"
+    
+  # Labels for resource organization
+  labels:
+    environment: "production"
+    project: "cqc-rating-predictor"
+    team: "ml-engineering"
+    cost_center: "data-science"
+    created_by: "claude-code"
+
+# Entity Types Configuration
+entity_types:
+  cqc_location:
+    id: "cqc_location"
+    description: "CQC location entity with comprehensive care facility features"
+    id_column: "location_id"
+    monitoring:
+      snapshot_analysis:
+        disabled: false
+        monitoring_interval_days: 1
+        monitoring_window_days: 7
+      categorical_threshold_config:
+        value: 0.3
+      numerical_threshold_config:
+        value: 0.3
+      
+  cqc_provider:
+    id: "cqc_provider"
+    description: "CQC provider entity with organization-level features"
+    id_column: "provider_id"
+    monitoring:
+      snapshot_analysis:
+        disabled: false
+        monitoring_interval_days: 1
+
+# Feature Groups Definition
+feature_groups:
+  location_features:
+    entity_type: "cqc_location"
+    description: "Basic location information and identifiers"
+    features:
+      - name: "location_id"
+        type: "STRING"
+        description: "Unique CQC location identifier"
+        monitoring: true
+      - name: "provider_id"
+        type: "STRING"
+        description: "Parent provider identifier"
+        monitoring: true
+      - name: "location_name"
+        type: "STRING"
+        description: "Name of the care location"
+        monitoring: false
+      - name: "location_type"
+        type: "STRING"
+        description: "Type of care location"
+        monitoring: true
+      - name: "registration_status"
+        type: "STRING"
+        description: "Current registration status"
+        monitoring: true
+        
+  rating_features:
+    entity_type: "cqc_location"
+    description: "CQC rating information across all domains"
+    features:
+      - name: "overall_rating"
+        type: "STRING"
+        description: "Overall CQC rating"
+        monitoring: true
+        importance: "high"
+      - name: "overall_rating_numeric"
+        type: "DOUBLE"
+        description: "Numeric version of overall rating"
+        monitoring: true
+        importance: "high"
+      - name: "average_domain_rating"
+        type: "DOUBLE"
+        description: "Average across all domain ratings"
+        monitoring: true
+        importance: "high"
+        
+  temporal_features:
+    entity_type: "cqc_location"
+    description: "Time-based features for trend analysis"
+    features:
+      - name: "days_since_last_inspection"
+        type: "INT64"
+        description: "Days since last inspection"
+        monitoring: true
+        importance: "high"
+      - name: "years_registered"
+        type: "DOUBLE"
+        description: "Years since registration"
+        monitoring: true
+        importance: "medium"
+        
+  dashboard_features:
+    entity_type: "cqc_location"
+    description: "Real-time dashboard and monitoring features"
+    features:
+      - name: "risk_score"
+        type: "DOUBLE"
+        description: "Calculated risk score (0-1)"
+        monitoring: true
+        importance: "critical"
+      - name: "predicted_rating"
+        type: "STRING"
+        description: "ML predicted rating"
+        monitoring: true
+        importance: "critical"
+      - name: "prediction_confidence"
+        type: "DOUBLE"
+        description: "Prediction confidence score"
+        monitoring: true
+        importance: "high"
+
+# Feature Views Configuration
+feature_views:
+  real_time_prediction:
+    id: "real_time_prediction"
+    description: "Optimized features for real-time ML prediction"
+    entity_type: "cqc_location"
+    features:
+      - "days_since_last_inspection"
+      - "overall_rating_numeric"
+      - "average_domain_rating"
+      - "has_inadequate_rating"
+      - "provider_avg_rating"
+      - "region_avg_rating"
+      - "number_of_beds"
+      - "service_complexity"
+      - "is_new_home"
+      - "inspection_overdue"
+    serving_config:
+      latency_target_ms: 50
+      throughput_target_qps: 1000
+      
+  dashboard_monitoring:
+    id: "dashboard_monitoring"
+    description: "Features for dashboard and monitoring interfaces"
+    entity_type: "cqc_location"
+    features:
+      - "risk_score"
+      - "predicted_rating"
+      - "prediction_confidence"
+      - "risk_category"
+      - "priority_score"
+      - "alert_flags"
+      - "performance_trend"
+      - "peer_comparison_rank"
+    serving_config:
+      latency_target_ms: 100
+      throughput_target_qps: 500
+
+# Data Sources Configuration
+data_sources:
+  bigquery:
+    project_id: "machine-learning-exp-467008"
+    dataset_id: "cqc_dataset"
+    tables:
+      ml_features: "ml_features"
+      care_homes: "care_homes"
+      providers: "providers"
+      predictions: "predictions"
+      
+  feature_timestamp_column: "feature_timestamp"
+  entity_id_columns:
+    cqc_location: "location_id"
+    cqc_provider: "provider_id"
+
+# Batch Ingestion Configuration
+batch_ingestion:
+  worker_count: 8
+  request_timeout_seconds: 7200
+  retry_count: 3
+  batch_size: 10000
+  parallel_workers: 4
+  
+  schedule:
+    # Cron schedule for automated ingestion
+    cron: "0 2 * * *"  # Daily at 2 AM UTC
+    timezone: "UTC"
+    
+  source_query_template: |
+    SELECT 
+      location_id,
+      provider_id,
+      {feature_columns},
+      feature_timestamp
+    FROM `{project_id}.{dataset_id}.{table_name}`
+    WHERE feature_timestamp >= '{start_time}'
+      AND feature_timestamp < '{end_time}'
+      AND location_id IS NOT NULL
+
+# Online Serving Configuration
+online_serving:
+  # Performance targets
+  latency_target_p50_ms: 30
+  latency_target_p95_ms: 100
+  latency_target_p99_ms: 200
+  throughput_target_qps: 2000
+  
+  # Scaling configuration
+  auto_scaling:
+    enabled: true
+    target_cpu_utilization: 70
+    target_memory_utilization: 80
+    min_replicas: 2
+    max_replicas: 20
+    scale_up_cooldown_seconds: 300
+    scale_down_cooldown_seconds: 600
+    
+  # Caching configuration
+  cache_config:
+    enabled: true
+    ttl_seconds: 300  # 5 minutes
+    max_cache_size_mb: 1024
+
+# Monitoring and Alerting Configuration
+monitoring:
+  enabled: true
+  
+  # Feature drift monitoring
+  drift_detection:
+    enabled: true
+    threshold: 0.3
+    monitoring_window_days: 7
+    comparison_window_days: 30
+    
+  # Feature freshness monitoring
+  freshness_monitoring:
+    enabled: true
+    max_staleness_hours: 24
+    alert_threshold_hours: 6
+    
+  # Serving performance monitoring
+  serving_monitoring:
+    enabled: true
+    latency_threshold_p95_ms: 150
+    error_rate_threshold_percent: 1.0
+    throughput_threshold_qps: 100
+    
+  # Alerts configuration
+  alerts:
+    notification_channels:
+      - "projects/machine-learning-exp-467008/notificationChannels/email-ml-team"
+    
+    policies:
+      - name: "Feature Store High Latency"
+        condition: "serving_latency_p95 > 150ms"
+        severity: "WARNING"
+        
+      - name: "Feature Store High Error Rate"
+        condition: "error_rate > 1%"
+        severity: "CRITICAL"
+        
+      - name: "Feature Drift Detected"
+        condition: "drift_score > 0.3"
+        severity: "WARNING"
+
+# Cost Optimization Configuration
+cost_optimization:
+  # Preemptible instances for batch jobs
+  preemptible_instances:
+    enabled: true
+    percentage: 80
+    
+  # Auto-scaling for cost efficiency
+  auto_scaling:
+    enabled: true
+    scale_down_enabled: true
+    idle_timeout_minutes: 30
+    
+  # Storage lifecycle management
+  storage_lifecycle:
+    nearline_days: 30
+    coldline_days: 90
+    archive_days: 365
+    delete_days: 2555  # 7 years retention
+
+# Security Configuration
+security:
+  # VPC configuration
+  vpc:
+    enabled: true
+    network: "projects/machine-learning-exp-467008/global/networks/default"
+    subnet: "projects/machine-learning-exp-467008/regions/europe-west2/subnetworks/default"
+    
+  # Private endpoints
+  private_endpoints:
+    enabled: true
+    
+  # Encryption
+  encryption:
+    enabled: true
+    kms_key_name: "projects/machine-learning-exp-467008/locations/europe-west2/keyRings/vertex-ai/cryptoKeys/feature-store"
+    
+  # Access control
+  iam:
+    feature_store_admin:
+      - "group:ml-engineering@company.com"
+      - "serviceAccount:vertex-ai-service@machine-learning-exp-467008.iam.gserviceaccount.com"
+    
+    feature_store_viewer:
+      - "group:data-scientists@company.com"
+      - "group:ml-engineers@company.com"
+
+# Backup and Disaster Recovery
+backup:
+  enabled: true
+  schedule: "0 3 * * *"  # Daily at 3 AM UTC
+  retention_days: 30
+  cross_region_backup:
+    enabled: true
+    backup_region: "europe-west1"
+
+# Development and Testing Configuration
+development:
+  feature_store_id: "cqc-feature-store-dev"
+  reduced_node_count: 2
+  monitoring_disabled: true
+  
+testing:
+  feature_store_id: "cqc-feature-store-test"
+  reduced_node_count: 1
+  test_data_percentage: 10

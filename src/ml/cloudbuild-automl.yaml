@@ -1,0 +1,234 @@
+# Cloud Build configuration for Vertex AI AutoML training deployment
+# This file defines the build steps for training CQC AutoML models on Google Cloud
+
+substitutions:
+  # Default substitutions - can be overridden when triggering the build
+  _PROJECT_ID: 'machine-learning-exp-467008'
+  _REGION: 'europe-west2'
+  _BQ_TABLE: 'cqc_dataset.ml_features_comprehensive'
+  _BUDGET: '10000'
+  _SERVICE_ACCOUNT: 'cqc-automl-training@${_PROJECT_ID}.iam.gserviceaccount.com'
+  _ARTIFACT_REGISTRY: '${_REGION}-docker.pkg.dev/${_PROJECT_ID}/cqc-ml'
+  _IMAGE_NAME: 'cqc-automl-trainer'
+  _IMAGE_TAG: 'latest'
+
+steps:
+  # Step 1: Validate BigQuery data
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'validate-bigquery-data'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🔍 Validating BigQuery dataset: ${_BQ_TABLE}"
+        
+        # Check if table exists and get basic stats
+        bq query --use_legacy_sql=false --format=prettyjson --max_rows=1 \
+          "SELECT 
+             COUNT(*) as total_rows,
+             COUNT(DISTINCT overall_rating) as rating_classes,
+             COUNTIF(overall_rating IS NULL) as missing_ratings
+           FROM \`${_PROJECT_ID}.${_BQ_TABLE}\`"
+        
+        # Validate minimum data requirements
+        row_count=$(bq query --use_legacy_sql=false --format=csv --max_rows=1 \
+          "SELECT COUNT(*) FROM \`${_PROJECT_ID}.${_BQ_TABLE}\`" | tail -n +2)
+        
+        if [ "$row_count" -lt 1000 ]; then
+          echo "❌ Error: Dataset has less than 1000 rows ($row_count)"
+          exit 1
+        fi
+        
+        echo "✅ BigQuery validation passed: $row_count rows"
+
+  # Step 2: Build AutoML trainer Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-trainer-image'
+    args:
+      - 'build'
+      - '-t'
+      - '${_ARTIFACT_REGISTRY}/${_IMAGE_NAME}:${_IMAGE_TAG}'
+      - '-f'
+      - 'src/ml/Dockerfile.automl'
+      - '.'
+    waitFor: ['validate-bigquery-data']
+
+  # Step 3: Push Docker image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-trainer-image'
+    args:
+      - 'push'
+      - '${_ARTIFACT_REGISTRY}/${_IMAGE_NAME}:${_IMAGE_TAG}'
+    waitFor: ['build-trainer-image']
+
+  # Step 4: Create service account if not exists
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'create-service-account'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🔧 Setting up service account for AutoML training"
+        
+        # Check if service account exists
+        if gcloud iam service-accounts describe ${_SERVICE_ACCOUNT} --quiet; then
+          echo "Service account already exists"
+        else
+          echo "Creating service account"
+          gcloud iam service-accounts create cqc-automl-training \
+            --description="Service account for CQC AutoML training" \
+            --display-name="CQC AutoML Training"
+        fi
+        
+        # Grant necessary permissions
+        gcloud projects add-iam-policy-binding ${_PROJECT_ID} \
+          --member="serviceAccount:${_SERVICE_ACCOUNT}" \
+          --role="roles/aiplatform.user"
+        
+        gcloud projects add-iam-policy-binding ${_PROJECT_ID} \
+          --member="serviceAccount:${_SERVICE_ACCOUNT}" \
+          --role="roles/bigquery.dataViewer"
+        
+        gcloud projects add-iam-policy-binding ${_PROJECT_ID} \
+          --member="serviceAccount:${_SERVICE_ACCOUNT}" \
+          --role="roles/bigquery.jobUser"
+        
+        gcloud projects add-iam-policy-binding ${_PROJECT_ID} \
+          --member="serviceAccount:${_SERVICE_ACCOUNT}" \
+          --role="roles/storage.objectAdmin"
+        
+        echo "✅ Service account setup completed"
+    waitFor: ['-']
+
+  # Step 5: Run AutoML training using Cloud Run Jobs
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'run-automl-training'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🚀 Starting AutoML training job"
+        
+        # Create unique job name with timestamp
+        JOB_NAME="cqc-automl-training-$(date +%Y%m%d-%H%M%S)"
+        
+        # Create and run Cloud Run Job for AutoML training
+        gcloud run jobs create $JOB_NAME \
+          --image=${_ARTIFACT_REGISTRY}/${_IMAGE_NAME}:${_IMAGE_TAG} \
+          --region=${_REGION} \
+          --service-account=${_SERVICE_ACCOUNT} \
+          --set-env-vars="PROJECT_ID=${_PROJECT_ID},REGION=${_REGION}" \
+          --args="--project-id,${_PROJECT_ID},--region,${_REGION},--bq-table,${_BQ_TABLE},--config,src/ml/automl_config.yaml,--budget,${_BUDGET}" \
+          --cpu=2 \
+          --memory=4Gi \
+          --max-retries=1 \
+          --parallelism=1 \
+          --task-count=1 \
+          --task-timeout=7200 \
+          --wait
+        
+        # Execute the job
+        echo "Executing AutoML training job: $JOB_NAME"
+        gcloud run jobs execute $JOB_NAME \
+          --region=${_REGION} \
+          --wait
+        
+        echo "✅ AutoML training job completed"
+    timeout: 3600s  # 1 hour timeout for this step
+    waitFor: ['push-trainer-image', 'create-service-account']
+
+  # Step 6: Validate training results
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'validate-training-results'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🔍 Validating training results"
+        
+        # List recently created models
+        gcloud ai models list \
+          --region=${_REGION} \
+          --filter="displayName:cqc-automl*" \
+          --sort-by="~createTime" \
+          --limit=5
+        
+        # List recently created endpoints
+        gcloud ai endpoints list \
+          --region=${_REGION} \
+          --filter="displayName:cqc-automl*" \
+          --sort-by="~createTime" \
+          --limit=5
+        
+        echo "✅ Training results validation completed"
+    waitFor: ['run-automl-training']
+
+  # Step 7: Clean up temporary resources
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'cleanup'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🧹 Cleaning up temporary resources"
+        
+        # Clean up old Cloud Run jobs (keep last 5)
+        OLD_JOBS=$(gcloud run jobs list \
+          --region=${_REGION} \
+          --filter="metadata.name:cqc-automl-training*" \
+          --format="value(metadata.name)" \
+          --sort-by="~metadata.creationTimestamp" | tail -n +6)
+        
+        for job in $OLD_JOBS; do
+          if [ -n "$job" ]; then
+            echo "Deleting old job: $job"
+            gcloud run jobs delete $job --region=${_REGION} --quiet || true
+          fi
+        done
+        
+        echo "✅ Cleanup completed"
+    waitFor: ['validate-training-results']
+
+# Build options
+options:
+  # Use high CPU machine for faster builds
+  machineType: 'E2_HIGHCPU_8'
+  
+  # Enable build logs
+  logging: CLOUD_LOGGING_ONLY
+  
+  # Set substitution option
+  substitutionOption: 'ALLOW_LOOSE'
+
+# Build timeout (2 hours total)
+timeout: 7200s
+
+# Build tags for organization
+tags:
+  - 'cqc-automl'
+  - 'vertex-ai'
+  - 'ml-training'
+
+# IAM permissions required for Cloud Build service account:
+# - roles/aiplatform.user
+# - roles/bigquery.dataViewer  
+# - roles/bigquery.jobUser
+# - roles/storage.objectAdmin
+# - roles/artifactregistry.writer
+# - roles/run.admin
+# - roles/iam.serviceAccountUser
+
+# To trigger this build manually:
+# gcloud builds submit --config=src/ml/cloudbuild-automl.yaml
+#
+# To trigger with custom parameters:
+# gcloud builds submit --config=src/ml/cloudbuild-automl.yaml \
+#   --substitutions=_PROJECT_ID=your-project,_BQ_TABLE=your_dataset.your_table
+#
+# To create a build trigger:
+# gcloud builds triggers create github \
+#   --repo-name=cqc-scrape-experimentation \
+#   --repo-owner=your-username \
+#   --branch-pattern="^main$" \
+#   --build-config=src/ml/cloudbuild-automl.yaml \
+#   --include-logs-with-status

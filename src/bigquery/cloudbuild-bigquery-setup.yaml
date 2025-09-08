@@ -1,0 +1,35 @@
+steps:
+  # Run BigQuery setup script
+  - name: 'python:3.11-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Installing Python dependencies..."
+        pip install google-cloud-bigquery
+        
+        echo "Running BigQuery setup..."
+        python setup_bigquery.py
+    dir: 'src/bigquery'
+    env:
+      - 'GCP_PROJECT=$PROJECT_ID'
+
+  # Verify tables were created
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Verifying BigQuery tables..."
+        bq ls -n 1000 $PROJECT_ID:cqc_dataset
+        
+        echo "Getting table schemas..."
+        for table in locations_complete care_homes ml_features predictions; do
+          echo "Schema for $table:"
+          bq show --schema --format=prettyjson $PROJECT_ID:cqc_dataset.$table || true
+        done
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 600s

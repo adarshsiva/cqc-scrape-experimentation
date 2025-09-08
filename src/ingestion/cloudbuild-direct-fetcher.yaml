@@ -1,0 +1,42 @@
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/cqc-direct-fetcher:latest'
+      - '-f'
+      - 'src/ingestion/Dockerfile.direct'
+      - 'src/ingestion'
+    id: 'build-image'
+
+  # Push to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/cqc-direct-fetcher:latest'
+    id: 'push-image'
+
+  # Deploy as Cloud Run Job
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'jobs'
+      - 'replace'
+      - '--image=gcr.io/$PROJECT_ID/cqc-direct-fetcher:latest'
+      - '--job=cqc-direct-fetcher'
+      - '--region=europe-west2'
+      - '--max-retries=1'
+      - '--memory=4Gi'
+      - '--cpu=2'
+      - '--task-timeout=3600'
+      - '--service-account=cqc-fetcher@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--set-env-vars=GCP_PROJECT=$PROJECT_ID,MAX_LOCATIONS=2000,BATCH_SIZE=100'
+    id: 'deploy-job'
+
+images:
+  - 'gcr.io/$PROJECT_ID/cqc-direct-fetcher:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -10,22 +10,34 @@ steps:
 
   # Deploy to Cloud Run Job
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - 'run'
-      - 'jobs'
-      - 'replace'
-      - '--image=gcr.io/$PROJECT_ID/cqc-data-fetcher-enhanced'
-      - '--region=europe-west2'
-      - '--task-timeout=3600'
-      - '--max-retries=3'
-      - '--parallelism=1'
-      - '--memory=2Gi'
-      - '--cpu=2'
-      - '--service-account=cqc-fetcher@$PROJECT_ID.iam.gserviceaccount.com'
-      - '--set-env-vars=MAX_LOCATIONS=1000,BATCH_SIZE=100'
-      - '--'
-      - 'cqc-data-fetcher-enhanced'
+      - '-c'
+      - |
+        # Check if job exists and create or update accordingly
+        if gcloud run jobs describe cqc-data-fetcher-enhanced --region=europe-west2 --project=$PROJECT_ID 2>/dev/null; then
+          echo "Job exists, updating..."
+          gcloud run jobs update cqc-data-fetcher-enhanced \
+            --image=gcr.io/$PROJECT_ID/cqc-data-fetcher-enhanced \
+            --region=europe-west2 \
+            --task-timeout=3600 \
+            --max-retries=3 \
+            --parallelism=1 \
+            --memory=2Gi \
+            --cpu=2 \
+            --set-env-vars=MAX_LOCATIONS=1000,BATCH_SIZE=100
+        else
+          echo "Job doesn't exist, creating..."
+          gcloud run jobs create cqc-data-fetcher-enhanced \
+            --image=gcr.io/$PROJECT_ID/cqc-data-fetcher-enhanced \
+            --region=europe-west2 \
+            --task-timeout=3600 \
+            --max-retries=3 \
+            --parallelism=1 \
+            --memory=2Gi \
+            --cpu=2 \
+            --set-env-vars=MAX_LOCATIONS=1000,BATCH_SIZE=100
+        fi
 
 # Build configuration options
 options:

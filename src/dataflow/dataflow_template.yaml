@@ -1,0 +1,310 @@
+# Dataflow Flex Template Configuration for CQC Streaming Feature Pipeline
+# This template defines the metadata and parameters for the streaming pipeline
+
+metadata:
+  name: "CQC Streaming Feature Pipeline"
+  description: "Real-time processing of CQC dashboard events for ML feature ingestion"
+  parameters:
+    - name: "project_id"
+      label: "GCP Project ID"
+      helpText: "Google Cloud Project ID where resources are located"
+      regexes: 
+        - "^[a-z][a-z0-9-]*[a-z0-9]$"
+      paramType: "TEXT"
+      isOptional: false
+    
+    - name: "pubsub_topic"
+      label: "Pub/Sub Topic"
+      helpText: "Full Pub/Sub topic path (projects/PROJECT_ID/topics/TOPIC_NAME)"
+      regexes:
+        - "^projects/[^/]+/topics/[^/]+$"
+      paramType: "TEXT"
+      isOptional: false
+      defaultValue: "projects/machine-learning-exp-467008/topics/dashboard-events"
+    
+    - name: "bigquery_dataset"
+      label: "BigQuery Dataset"
+      helpText: "BigQuery dataset for storing processed features"
+      paramType: "TEXT"
+      isOptional: false
+      defaultValue: "cqc_dataset"
+    
+    - name: "region"
+      label: "GCP Region"
+      helpText: "Google Cloud region for running the pipeline"
+      paramType: "TEXT"
+      isOptional: true
+      defaultValue: "europe-west2"
+    
+    - name: "temp_location"
+      label: "Temporary Location"
+      helpText: "GCS path for temporary files (gs://bucket-name/path)"
+      regexes:
+        - "^gs://[^/]+/.*$"
+      paramType: "TEXT"
+      isOptional: true
+      defaultValue: "gs://machine-learning-exp-467008-cqc-dataflow-temp/streaming"
+    
+    - name: "num_workers"
+      label: "Initial Worker Count"
+      helpText: "Initial number of Dataflow workers"
+      paramType: "INTEGER"
+      isOptional: true
+      defaultValue: 1
+      minValue: 1
+      maxValue: 10
+    
+    - name: "max_num_workers"
+      label: "Maximum Worker Count"
+      helpText: "Maximum number of Dataflow workers for autoscaling"
+      paramType: "INTEGER"
+      isOptional: true
+      defaultValue: 5
+      minValue: 1
+      maxValue: 50
+    
+    - name: "machine_type"
+      label: "Worker Machine Type"
+      helpText: "Machine type for Dataflow workers"
+      paramType: "TEXT"
+      isOptional: true
+      defaultValue: "n1-standard-2"
+    
+    - name: "disk_size_gb"
+      label: "Worker Disk Size (GB)"
+      helpText: "Disk size in GB for each worker"
+      paramType: "INTEGER"
+      isOptional: true
+      defaultValue: 30
+      minValue: 10
+      maxValue: 100
+    
+    - name: "feature_store_id"
+      label: "Vertex AI Feature Store ID"
+      helpText: "Vertex AI Feature Store ID for storing online features"
+      paramType: "TEXT"
+      isOptional: true
+      defaultValue: "cqc_feature_store"
+    
+    - name: "enable_feature_store"
+      label: "Enable Feature Store Writes"
+      helpText: "Whether to write features to Vertex AI Feature Store"
+      paramType: "BOOLEAN"
+      isOptional: true
+      defaultValue: true
+    
+    - name: "window_size_minutes"
+      label: "Aggregation Window Size (Minutes)"
+      helpText: "Time window size in minutes for feature aggregation"
+      paramType: "INTEGER"
+      isOptional: true
+      defaultValue: 5
+      minValue: 1
+      maxValue: 60
+    
+    - name: "trigger_frequency_seconds"
+      label: "Trigger Frequency (Seconds)"
+      helpText: "How often to trigger window aggregations in seconds"
+      paramType: "INTEGER"
+      isOptional: true
+      defaultValue: 60
+      minValue: 10
+      maxValue: 600
+
+# Pipeline configuration
+spec:
+  image: "gcr.io/machine-learning-exp-467008/cqc-streaming-pipeline:latest"
+  metadata:
+    name: "CQC Streaming Feature Pipeline"
+    description: "Processes real-time CQC dashboard events into ML features"
+    version: "1.0.0"
+    streaming: true
+    supportsAtLeastOnce: true
+    supportsExactlyOnce: false
+  
+  defaultEnvironment:
+    tempLocation: "gs://machine-learning-exp-467008-cqc-dataflow-temp/streaming"
+    stagingLocation: "gs://machine-learning-exp-467008-cqc-dataflow-staging/streaming"
+    
+  environment:
+    serviceAccountEmail: "dataflow-service-account@machine-learning-exp-467008.iam.gserviceaccount.com"
+    
+  pipeline:
+    runner: "DataflowRunner"
+    options:
+      streaming: true
+      autoscalingAlgorithm: "THROUGHPUT_BASED"
+      enableStreamingEngine: true
+      
+    resources:
+      zones:
+        - "europe-west2-a"
+        - "europe-west2-b"
+        - "europe-west2-c"
+      
+      network: "default"
+      subnetwork: "regions/europe-west2/subnetworks/default"
+      
+      worker:
+        machineType: "n1-standard-2"
+        diskType: "pd-ssd"
+        diskSizeGb: 30
+        
+      autoscaling:
+        minNumWorkers: 1
+        maxNumWorkers: 5
+        algorithm: "THROUGHPUT_BASED"
+        targetThroughputPercentage: 70
+
+# Service dependencies and permissions
+dependencies:
+  services:
+    - pubsub.googleapis.com
+    - bigquery.googleapis.com
+    - aiplatform.googleapis.com
+    - dataflow.googleapis.com
+    - storage.googleapis.com
+    - cloudbuild.googleapis.com
+  
+  permissions:
+    - "pubsub.subscriber"
+    - "bigquery.dataEditor"
+    - "bigquery.dataViewer" 
+    - "storage.objectAdmin"
+    - "aiplatform.featureOnlineStoreAdmin"
+    - "dataflow.developer"
+    - "logging.logWriter"
+    - "monitoring.metricWriter"
+
+# Monitoring and alerting configuration
+monitoring:
+  metrics:
+    - name: "events_processed_per_second"
+      description: "Number of events processed per second"
+      unit: "events/sec"
+      
+    - name: "processing_latency_p99"
+      description: "99th percentile processing latency"
+      unit: "seconds"
+      
+    - name: "error_rate"
+      description: "Percentage of events that failed processing"
+      unit: "percent"
+      
+    - name: "feature_store_write_errors"
+      description: "Number of failed Feature Store writes"
+      unit: "count"
+      
+    - name: "bigquery_streaming_errors"
+      description: "Number of BigQuery streaming insert errors"
+      unit: "count"
+  
+  alerts:
+    - name: "high_error_rate"
+      condition: "error_rate > 5"
+      duration: "5m"
+      severity: "WARNING"
+      
+    - name: "pipeline_stuck"
+      condition: "events_processed_per_second == 0"
+      duration: "10m" 
+      severity: "CRITICAL"
+      
+    - name: "high_latency"
+      condition: "processing_latency_p99 > 30"
+      duration: "5m"
+      severity: "WARNING"
+
+# Data schemas and validation
+schemas:
+  input_event:
+    type: "json"
+    required_fields:
+      - "location_id"
+      - "event_type" 
+      - "timestamp"
+      - "metrics"
+    
+    event_types:
+      - "inspection_update"
+      - "rating_change"
+      - "capacity_update"
+      - "compliance_alert"
+      - "dashboard_interaction"
+  
+  output_feature:
+    bigquery_table: "cqc_dataset.realtime_features"
+    partitioning:
+      type: "time"
+      field: "event_timestamp"
+      granularity: "DAY"
+    clustering:
+      fields: ["location_id", "event_type", "feature_category"]
+
+# Testing and validation
+testing:
+  unit_tests:
+    framework: "pytest"
+    coverage_threshold: 80
+    
+  integration_tests:
+    pubsub_emulator: true
+    bigquery_emulator: false
+    
+  load_tests:
+    max_events_per_second: 1000
+    test_duration_minutes: 60
+    
+  data_validation:
+    schema_validation: true
+    data_quality_checks: true
+    duplicate_detection: true
+
+# Deployment configuration
+deployment:
+  environment: "production"
+  
+  prerequisites:
+    - "BigQuery dataset 'cqc_dataset' exists"
+    - "Pub/Sub topic 'dashboard-events' exists"
+    - "Feature Store 'cqc_feature_store' exists"
+    - "Service account has required permissions"
+    
+  rollback:
+    strategy: "blue_green"
+    health_checks:
+      - "pipeline_is_running"
+      - "events_being_processed"
+      - "no_critical_errors"
+    
+  scaling:
+    triggers:
+      - metric: "pubsub_backlog"
+        threshold: 1000
+        action: "scale_up"
+      - metric: "cpu_utilization"
+        threshold: 80
+        action: "scale_up"
+
+# Documentation and examples  
+documentation:
+  user_guide: "docs/streaming_pipeline_user_guide.md"
+  api_reference: "docs/streaming_pipeline_api.md"
+  troubleshooting: "docs/streaming_pipeline_troubleshooting.md"
+  
+examples:
+  - name: "basic_setup"
+    description: "Basic pipeline setup with default parameters"
+    parameters:
+      project_id: "your-project-id"
+      pubsub_topic: "projects/your-project/topics/dashboard-events"
+      
+  - name: "high_throughput"
+    description: "Configuration for high-throughput scenarios"
+    parameters:
+      project_id: "your-project-id" 
+      num_workers: 3
+      max_num_workers: 20
+      machine_type: "n1-standard-4"
+      window_size_minutes: 1
+      trigger_frequency_seconds: 30

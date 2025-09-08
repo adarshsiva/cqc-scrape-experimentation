@@ -1,0 +1,279 @@
+steps:
+  # Install Python dependencies
+  - name: 'python:3.11'
+    entrypoint: 'pip'
+    args: ['install', '-r', 'requirements.txt', '--user']
+    id: 'install-dependencies'
+
+  # Create setup.py for Dataflow packaging
+  - name: 'python:3.11'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        cat > setup.py << 'EOF'
+        from setuptools import setup, find_packages
+
+        setup(
+            name='cqc-etl-pipeline',
+            version='2.0.0',
+            description='Comprehensive CQC ETL Pipeline for Apache Beam/Dataflow',
+            packages=find_packages(),
+            install_requires=[
+                'apache-beam[gcp]==2.53.0',
+                'google-cloud-storage==2.13.0',
+                'google-cloud-bigquery==3.13.0',
+                'google-cloud-pubsub==2.18.4',
+                'pandas==2.1.4',
+                'numpy==1.24.4',
+                'python-dateutil==2.8.2',
+                'pytz==2023.3',
+                'requests==2.31.0',
+                'orjson==3.9.10',
+                'jsonschema==4.20.0',
+            ],
+            python_requires='>=3.8',
+        )
+        EOF
+    id: 'create-setup'
+    waitFor: ['install-dependencies']
+
+  # Create BigQuery datasets if they don't exist
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Create main dataset
+        bq mk --dataset --location=europe-west2 ${PROJECT_ID}:cqc_data || echo "Dataset cqc_data already exists"
+        
+        # Create dataset for processed data if different
+        bq mk --dataset --location=europe-west2 ${PROJECT_ID}:cqc_processed || echo "Dataset cqc_processed already exists"
+    id: 'create-datasets'
+    waitFor: ['create-setup']
+
+  # Create GCS buckets for temp and staging
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Create temp bucket for Dataflow
+        gsutil mb -l europe-west2 gs://${PROJECT_ID}-cqc-dataflow-temp || echo "Temp bucket already exists"
+        
+        # Create staging bucket for pipeline artifacts
+        gsutil mb -l europe-west2 gs://${PROJECT_ID}-cqc-dataflow-staging || echo "Staging bucket already exists"
+        
+        # Set lifecycle policies to clean up temp files
+        cat > lifecycle.json << 'EOF'
+        {
+          "lifecycle": {
+            "rule": [
+              {
+                "action": {"type": "Delete"},
+                "condition": {"age": 7}
+              }
+            ]
+          }
+        }
+        EOF
+        
+        gsutil lifecycle set lifecycle.json gs://${PROJECT_ID}-cqc-dataflow-temp
+        gsutil lifecycle set lifecycle.json gs://${PROJECT_ID}-cqc-dataflow-staging
+    id: 'create-buckets'
+    waitFor: ['create-datasets']
+
+  # Run comprehensive ETL pipeline for locations (batch mode)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'python'
+    args:
+      - 'dataflow_etl_complete.py'
+      - '--project-id=${PROJECT_ID}'
+      - '--dataset-id=cqc_processed'
+      - '--temp-location=gs://${PROJECT_ID}-cqc-dataflow-temp/tmp'
+      - '--region=europe-west2'
+      - '--runner=DataflowRunner'
+      - '--input-pattern=gs://${PROJECT_ID}-cqc-raw-data/raw/locations/*.json'
+      - '--job-name=cqc-etl-complete-locations-${BUILD_ID}'
+      - '--num-workers=2'
+      - '--max-num-workers=10'
+      - '--machine-type=n1-standard-4'
+      - '--disk-size-gb=100'
+    env:
+      - 'PYTHONPATH=/workspace/.local/lib/python3.11/site-packages'
+    id: 'run-locations-etl'
+    timeout: 3600s
+    waitFor: ['create-buckets']
+
+  # Optional: Run ETL for providers data as well
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Check if provider data exists before running
+        if gsutil ls gs://${PROJECT_ID}-cqc-raw-data/raw/providers/*.json 2>/dev/null; then
+          echo "Provider data found, running provider ETL..."
+          python dataflow_pipeline.py \
+            --project-id=${PROJECT_ID} \
+            --dataset-id=cqc_processed \
+            --temp-location=gs://${PROJECT_ID}-cqc-dataflow-temp/tmp \
+            --input-path=gs://${PROJECT_ID}-cqc-raw-data/raw/providers/*.json \
+            --data-type=providers \
+            --runner=DataflowRunner
+        else
+          echo "No provider data found, skipping provider ETL"
+        fi
+    env:
+      - 'PYTHONPATH=/workspace/.local/lib/python3.11/site-packages'
+    id: 'run-providers-etl'
+    timeout: 1800s
+    waitFor: ['run-locations-etl']
+
+  # Create BigQuery views for analysis
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Create view for care homes with risk indicators
+        bq query --use_legacy_sql=false << 'EOF'
+        CREATE OR REPLACE VIEW `${PROJECT_ID}.cqc_processed.care_homes_risk_view` AS
+        SELECT 
+          location_id,
+          location_name,
+          provider_name,
+          region,
+          local_authority,
+          overall_rating,
+          care_home_type,
+          bed_capacity_category,
+          total_bed_capacity,
+          risk_score,
+          compliance_trend,
+          days_since_last_inspection,
+          inspection_frequency_category,
+          specializes_in_dementia,
+          specializes_in_nursing,
+          provides_end_of_life_care,
+          data_quality_score,
+          CASE 
+            WHEN risk_score >= 70 THEN 'High Risk'
+            WHEN risk_score >= 40 THEN 'Medium Risk'
+            WHEN risk_score >= 20 THEN 'Low Risk'
+            ELSE 'Very Low Risk'
+          END AS risk_category,
+          CASE 
+            WHEN days_since_last_inspection > 730 AND overall_rating IN ('Inadequate', 'Requires improvement') THEN 'Urgent Review Required'
+            WHEN days_since_last_inspection > 365 AND overall_rating = 'Inadequate' THEN 'Review Required'
+            WHEN overall_rating = 'Outstanding' THEN 'Exemplar'
+            ELSE 'Standard Monitoring'
+          END AS monitoring_status
+        FROM `${PROJECT_ID}.cqc_processed.care_homes`
+        WHERE is_active = true
+        EOF
+
+        # Create view for regional statistics
+        bq query --use_legacy_sql=false << 'EOF'
+        CREATE OR REPLACE VIEW `${PROJECT_ID}.cqc_processed.regional_care_home_stats` AS
+        SELECT 
+          region,
+          COUNT(*) as total_care_homes,
+          COUNT(CASE WHEN overall_rating = 'Outstanding' THEN 1 END) as outstanding_count,
+          COUNT(CASE WHEN overall_rating = 'Good' THEN 1 END) as good_count,
+          COUNT(CASE WHEN overall_rating = 'Requires improvement' THEN 1 END) as requires_improvement_count,
+          COUNT(CASE WHEN overall_rating = 'Inadequate' THEN 1 END) as inadequate_count,
+          ROUND(AVG(risk_score), 2) as avg_risk_score,
+          SUM(total_bed_capacity) as total_beds,
+          COUNT(CASE WHEN specializes_in_dementia THEN 1 END) as dementia_specialists,
+          COUNT(CASE WHEN provides_end_of_life_care THEN 1 END) as eol_care_providers,
+          ROUND(AVG(days_since_last_inspection), 0) as avg_days_since_inspection
+        FROM `${PROJECT_ID}.cqc_processed.care_homes`
+        WHERE is_active = true
+        GROUP BY region
+        ORDER BY total_care_homes DESC
+        EOF
+
+        # Create view for ML features
+        bq query --use_legacy_sql=false << 'EOF'
+        CREATE OR REPLACE VIEW `${PROJECT_ID}.cqc_processed.ml_features_view` AS
+        SELECT 
+          location_id,
+          provider_id,
+          region,
+          local_authority,
+          care_home_type,
+          bed_capacity_category,
+          total_bed_capacity,
+          registration_year,
+          days_since_registration,
+          days_since_last_inspection,
+          num_regulated_activities,
+          num_specialisms,
+          service_complexity_score,
+          urban_rural_indicator,
+          theoretical_staff_ratio,
+          specializes_in_dementia,
+          specializes_in_nursing,
+          specializes_in_residential,
+          provides_end_of_life_care,
+          accepts_mental_health,
+          accepts_learning_disabilities,
+          overall_rating_score,
+          average_rating_score,
+          rating_consistency_score,
+          has_inadequate_rating,
+          data_quality_score,
+          CASE WHEN overall_rating IN ('Outstanding', 'Good') THEN 1 ELSE 0 END as good_rating_binary,
+          CASE WHEN overall_rating = 'Inadequate' THEN 1 ELSE 0 END as inadequate_rating_binary
+        FROM `${PROJECT_ID}.cqc_processed.care_homes`
+        WHERE is_active = true
+          AND data_quality_score >= 70  -- Only include high quality data for ML
+          AND overall_rating IS NOT NULL
+        EOF
+    id: 'create-views'
+    waitFor: ['run-providers-etl']
+
+  # Set up monitoring and alerting
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:latest'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "ETL pipeline deployment completed successfully!"
+        echo "Created datasets: cqc_processed"
+        echo "Created tables: locations_complete, care_homes, processing_errors"
+        echo "Created views: care_homes_risk_view, regional_care_home_stats, ml_features_view"
+        echo ""
+        echo "To monitor the pipeline:"
+        echo "1. Check Dataflow jobs: https://console.cloud.google.com/dataflow/jobs"
+        echo "2. View BigQuery tables: https://console.cloud.google.com/bigquery"
+        echo "3. Monitor pipeline metrics in Cloud Monitoring"
+        echo ""
+        echo "To run the pipeline manually:"
+        echo "python dataflow_etl_complete.py \\"
+        echo "  --project-id=${PROJECT_ID} \\"
+        echo "  --dataset-id=cqc_processed \\"
+        echo "  --temp-location=gs://${PROJECT_ID}-cqc-dataflow-temp/tmp \\"
+        echo "  --input-pattern='gs://${PROJECT_ID}-cqc-raw-data/raw/locations/*.json'"
+    id: 'deployment-summary'
+    waitFor: ['create-views']
+
+# Substitutions for dynamic values
+substitutions:
+  _REGION: 'europe-west2'
+  _DATASET_ID: 'cqc_processed'
+
+# Build configuration
+timeout: 7200s  # 2 hours
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'N1_HIGHCPU_8'
+  substitution_option: 'ALLOW_LOOSE'
+
+# Build triggers (optional)
+# This section can be uncommented if you want to set up automatic triggers
+# availableSecrets:
+#   secretManager:
+#   - versionName: projects/${PROJECT_ID}/secrets/cqc-api-key/versions/latest
+#     env: 'CQC_API_KEY'
