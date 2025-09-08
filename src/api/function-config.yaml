@@ -1,0 +1,39 @@
+# Cloud Functions deployment configuration for Dashboard Prediction API
+# Alternative to Cloud Run deployment for serverless execution
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-prediction-function-config
+data:
+  # Function configuration
+  function_name: "dashboard-prediction-api"
+  runtime: "python310"
+  entry_point: "dashboard_prediction_function"
+  source_dir: "src/api"
+  
+  # Runtime settings
+  memory: "2Gi"
+  timeout: "300s"
+  max_instances: "100"
+  min_instances: "0"
+  
+  # Environment variables
+  environment_variables: |
+    GCP_PROJECT={{ .Values.project_id }}
+    GCP_REGION={{ .Values.region }}
+    VERTEX_ENDPOINT_ID={{ .Values.endpoint_id }}
+    MODEL_BUCKET={{ .Values.project_id }}-cqc-processed
+    ENABLE_AUTH=true
+    API_SECRET_NAME=dashboard-api-key
+  
+  # IAM and security
+  service_account: "dashboard-prediction-sa@{{ .Values.project_id }}.iam.gserviceaccount.com"
+  ingress_settings: "ALLOW_ALL"
+  
+  # Trigger configuration
+  trigger_type: "https"
+  
+  # Build configuration
+  build_environment_variables: |
+    GOOGLE_FUNCTION_SOURCE=src/api/dashboard_prediction_service.py
